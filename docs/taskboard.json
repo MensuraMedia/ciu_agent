@@ -1,0 +1,126 @@
+{
+  "phase": "Phase 1: Foundation",
+  "status": "in_progress",
+  "tasks": [
+    {
+      "id": "P1-001",
+      "title": "Create package scaffolding and requirements.txt",
+      "agent": "conductor",
+      "status": "in_progress",
+      "blocked_by": [],
+      "blocks": ["P1-002", "P1-003", "P1-004", "P1-005"],
+      "acceptance": [
+        "All __init__.py files exist",
+        "requirements.txt has pinned dependencies",
+        "Package is importable"
+      ]
+    },
+    {
+      "id": "P1-002",
+      "title": "Implement configuration defaults",
+      "agent": "capture-specialist",
+      "status": "pending",
+      "blocked_by": ["P1-001"],
+      "blocks": ["P1-006"],
+      "acceptance": [
+        "Settings dataclass with all config fields",
+        "Sensible defaults for frame rate, buffer size, thresholds"
+      ]
+    },
+    {
+      "id": "P1-003",
+      "title": "Implement data models (Zone, Events, Actions)",
+      "agent": "architect",
+      "status": "pending",
+      "blocked_by": ["P1-001"],
+      "blocks": ["P1-006", "P1-008"],
+      "acceptance": [
+        "Zone dataclass matches architecture spec",
+        "Event types defined as enums/dataclasses",
+        "Action types defined as enums/dataclasses",
+        "All models have type hints and docstrings"
+      ]
+    },
+    {
+      "id": "P1-004",
+      "title": "Implement PlatformInterface abstract base class",
+      "agent": "platform-engineer",
+      "status": "pending",
+      "blocked_by": ["P1-001"],
+      "blocks": ["P1-005"],
+      "acceptance": [
+        "ABC defined in ciu_agent/platform/interface.py",
+        "All methods have type hints and docstrings",
+        "Matches architecture spec section 5"
+      ]
+    },
+    {
+      "id": "P1-005",
+      "title": "Implement Windows platform layer",
+      "agent": "platform-engineer:windows-impl",
+      "status": "blocked",
+      "blocked_by": ["P1-004"],
+      "blocks": ["P1-006"],
+      "acceptance": [
+        "All PlatformInterface methods implemented",
+        "Screen capture returns valid frames",
+        "Cursor position tracking verified",
+        "Platform-specific tests pass"
+      ]
+    },
+    {
+      "id": "P1-006",
+      "title": "Implement Capture Engine with Tier 0 frame differencing",
+      "agent": "capture-specialist",
+      "status": "blocked",
+      "blocked_by": ["P1-002", "P1-003", "P1-005"],
+      "blocks": ["P1-007"],
+      "acceptance": [
+        "Continuous screen capture at 15+ fps",
+        "Cursor position stream synchronized with frames",
+        "Frame ring buffer working",
+        "Tier 0 diff detects screen changes vs static",
+        "Tests pass"
+      ]
+    },
+    {
+      "id": "P1-007",
+      "title": "Implement Replay Buffer",
+      "agent": "capture-specialist:recorder",
+      "status": "blocked",
+      "blocked_by": ["P1-006"],
+      "blocks": ["P1-008"],
+      "acceptance": [
+        "Session recording to disk (frames, cursor, metadata)",
+        "Session loading from disk",
+        "Tests pass"
+      ]
+    },
+    {
+      "id": "P1-008",
+      "title": "Implement Linux and macOS platform stubs",
+      "agent": "platform-engineer",
+      "status": "blocked",
+      "blocked_by": ["P1-004"],
+      "blocks": [],
+      "acceptance": [
+        "Both files exist with all methods stubbed",
+        "Methods raise NotImplementedError with clear messages",
+        "Importable without errors"
+      ]
+    },
+    {
+      "id": "P1-009",
+      "title": "Full Phase 1 test suite and validation",
+      "agent": "test-engineer",
+      "status": "blocked",
+      "blocked_by": ["P1-006", "P1-007", "P1-008"],
+      "acceptance": [
+        "Unit tests for all modules",
+        "All tests pass",
+        "Type checking passes",
+        "Lint passes"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=69.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ciu-agent"
+version = "0.1.0"
+description = "Complete Interface Usage Agent — a visual GUI agent"
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+include = ["ciu_agent*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
