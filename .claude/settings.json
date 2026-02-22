@@ -1,6 +1,8 @@
 {
   "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
+    "ENABLE_TOOL_SEARCH": "auto",
+    "MAX_MCP_OUTPUT_TOKENS": "15000"
   },
   "permissions": {
     "allow": [
@@ -9,7 +11,16 @@
       "Bash(pip *)",
       "Bash(pytest *)",
       "Bash(ruff *)",
-      "Bash(mypy *)"
+      "Bash(mypy *)",
+      "Bash(mkdir *)",
+      "Bash(move *)",
+      "Bash(copy *)",
+      "Bash(del *)",
+      "Bash(dir *)",
+      "Bash(tree *)",
+      "Bash(echo *)",
+      "Bash(cd *)",
+      "Bash(type *)"
     ]
   }
 }

@@ -145,6 +145,18 @@ Escalate to the Architect agent if the conflict involves
 a design decision not covered by existing specs.
 ```
 
+## Token Warden Integration
+
+The Conductor checks Token Warden status at three points during every session:
+
+1. **Before spawning agents:** Token Warden confirms MCP config and budgets are set
+2. **During task execution:** Conductor reads Token Warden warnings before assigning new tasks
+3. **After task completion:** Conductor waits for Token Warden session report before `/clear`
+
+The Conductor may override Token Warden recommendations if a task genuinely requires exceeding budget. Overrides must be logged to `docs/token_violations.md`.
+
+See `docs/token_warden_agent.md` for full Token Warden specification and `docs/token_ops.md` for the token operations policy.
+
 ## Startup Sequence
 
 When starting a new session to work on the CIU Agent:
@@ -152,9 +164,10 @@ When starting a new session to work on the CIU Agent:
 1. Read `CLAUDE.md` for project context
 2. Read `docs/phases.md` to identify current phase
 3. Read `docs/taskboard.json` to identify current task state
-4. Determine what work is ready to be assigned
-5. Spawn agents as needed (max 5 concurrent)
-6. Begin orchestrating
+4. Spawn Token Warden for session startup audit
+5. Determine what work is ready to be assigned
+6. Spawn agents as needed (max 5 concurrent)
+7. Begin orchestrating
 
 ## Session Handoff
 

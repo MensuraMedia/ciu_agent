@@ -10,6 +10,7 @@ Agents are organized into teams based on build phases. Not all agents are active
 
 ```
 Conductor (team lead)
+├── Token Warden (cost enforcement)
 ├── Architect
 ├── Platform Engineer
 │   ├── platform:linux-impl
@@ -29,6 +30,7 @@ Focus: Get screen capture and cursor tracking working on all platforms.
 
 ```
 Conductor (team lead)
+├── Token Warden (cost enforcement)
 ├── Architect
 ├── Canvas Specialist
 │   ├── canvas:zone-detector
@@ -47,6 +49,7 @@ Focus: Zone segmentation, registry, and tiered analysis.
 
 ```
 Conductor (team lead)
+├── Token Warden (cost enforcement)
 ├── Architect
 ├── Brush Specialist
 │   ├── brush:motion-planner
@@ -65,6 +68,7 @@ Focus: Cursor tracking, spatial events, motion planning, action execution.
 
 ```
 Conductor (team lead)
+├── Token Warden (cost enforcement)
 ├── Architect
 ├── Director Specialist
 │   ├── director:task-planner
@@ -84,6 +88,7 @@ Focus: Task decomposition, execution loop, error recovery.
 
 ```
 Conductor (team lead)
+├── Token Warden (cost enforcement)
 ├── Architect (elevated role — final design review)
 ├── All Specialists (support roles)
 ├── Test Engineer

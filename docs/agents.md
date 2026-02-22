@@ -122,6 +122,25 @@ Sub-agents:
 - `director:error-handler` — Detects when execution deviates from plan. Classifies error types. Decides between retry, undo, or re-plan.
 - `director:verifier` — After task completion, validates that the expected outcome was achieved by checking canvas state.
 
+### Agent: Token Warden
+
+**Role:** Token budget enforcement and cost monitoring.
+**Owns:** `docs/token_log.md`, `docs/token_violations.md`, `docs/token_reviews.md`.
+**Model tier:** Sonnet (threshold-based decisions only, thinking budget: 4000)
+
+Responsibilities:
+
+- Audit MCP configuration and env vars at session startup
+- Track per-agent token usage against budget ceilings
+- Enforce compaction when agents hit 70% of their budget
+- Monitor task-to-tool routing compliance (per `docs/token_ops.md`)
+- Log violations and escalate repeat offenders to Conductor
+- Produce session-end token reports and weekly reviews
+
+Sub-agents: None. The Token Warden operates alone to minimize its own token footprint.
+
+See `docs/token_warden_agent.md` for full specification.
+
 ### Agent: Test Engineer
 
 **Role:** Testing and validation across all components.
