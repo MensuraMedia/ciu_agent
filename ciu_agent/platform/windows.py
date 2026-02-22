@@ -156,9 +156,7 @@ def _enable_dpi_awareness() -> None:
     except (AttributeError, OSError):
         try:
             ctypes.windll.user32.SetProcessDPIAware()
-            logger.debug(
-                "Fell back to SetProcessDPIAware (system-level)."
-            )
+            logger.debug("Fell back to SetProcessDPIAware (system-level).")
         except (AttributeError, OSError):
             logger.warning("Could not set DPI awareness.")
 
@@ -174,22 +172,16 @@ def _get_process_name(hwnd: int) -> str:
         an empty string if retrieval fails.
     """
     pid = ctypes.wintypes.DWORD()
-    ctypes.windll.user32.GetWindowThreadProcessId(
-        hwnd, ctypes.byref(pid)
-    )
+    ctypes.windll.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
     if pid.value == 0:
         return ""
-    handle = ctypes.windll.kernel32.OpenProcess(
-        PROCESS_QUERY_LIMITED_INFORMATION, False, pid.value
-    )
+    handle = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid.value)
     if not handle:
         return ""
     try:
         buf = ctypes.create_unicode_buffer(260)
         size = ctypes.wintypes.DWORD(260)
-        ok = ctypes.windll.kernel32.QueryFullProcessImageNameW(
-            handle, 0, buf, ctypes.byref(size)
-        )
+        ok = ctypes.windll.kernel32.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(size))
         if ok and buf.value:
             # Return just the filename, not the full path
             return buf.value.rsplit("\\", 1)[-1]
@@ -239,9 +231,7 @@ class WindowsPlatform(PlatformInterface):
         monitor = self._sct.monitors[1]  # primary monitor
         shot = self._sct.grab(monitor)
         # mss returns BGRA; drop alpha channel for BGR
-        frame: NDArray[np.uint8] = np.array(shot, dtype=np.uint8)[
-            :, :, :3
-        ]
+        frame: NDArray[np.uint8] = np.array(shot, dtype=np.uint8)[:, :, :3]
         return frame
 
     # -- Cursor ----------------------------------------------------
@@ -268,9 +258,7 @@ class WindowsPlatform(PlatformInterface):
 
     # -- Mouse actions ---------------------------------------------
 
-    def click(
-        self, x: int, y: int, button: str = "left"
-    ) -> None:
+    def click(self, x: int, y: int, button: str = "left") -> None:
         """Single-click at the given coordinates.
 
         Moves the cursor to ``(x, y)`` then performs a click with the
@@ -287,15 +275,12 @@ class WindowsPlatform(PlatformInterface):
         btn = _BUTTON_MAP.get(button.lower())
         if btn is None:
             raise ValueError(
-                f"Unknown mouse button: {button!r}. "
-                f"Expected one of {list(_BUTTON_MAP)}"
+                f"Unknown mouse button: {button!r}. Expected one of {list(_BUTTON_MAP)}"
             )
         self._mouse.position = (x, y)
         self._mouse.click(btn, 1)
 
-    def double_click(
-        self, x: int, y: int, button: str = "left"
-    ) -> None:
+    def double_click(self, x: int, y: int, button: str = "left") -> None:
         """Double-click at the given coordinates.
 
         Args:
@@ -309,8 +294,7 @@ class WindowsPlatform(PlatformInterface):
         btn = _BUTTON_MAP.get(button.lower())
         if btn is None:
             raise ValueError(
-                f"Unknown mouse button: {button!r}. "
-                f"Expected one of {list(_BUTTON_MAP)}"
+                f"Unknown mouse button: {button!r}. Expected one of {list(_BUTTON_MAP)}"
             )
         self._mouse.position = (x, y)
         self._mouse.click(btn, 2)
@@ -406,13 +390,9 @@ class WindowsPlatform(PlatformInterface):
                 is_active=True,
             )
         title_buf = ctypes.create_unicode_buffer(256)
-        ctypes.windll.user32.GetWindowTextW(
-            hwnd, title_buf, 256
-        )
+        ctypes.windll.user32.GetWindowTextW(hwnd, title_buf, 256)
         rect = _RECT()
-        ctypes.windll.user32.GetWindowRect(
-            hwnd, ctypes.byref(rect)
-        )
+        ctypes.windll.user32.GetWindowRect(hwnd, ctypes.byref(rect))
         return WindowInfo(
             title=title_buf.value,
             x=rect.left,
@@ -436,24 +416,18 @@ class WindowsPlatform(PlatformInterface):
         results: list[WindowInfo] = []
         fg_hwnd = ctypes.windll.user32.GetForegroundWindow()
 
-        def _callback(
-            hwnd: int, _lparam: int
-        ) -> bool:
+        def _callback(hwnd: int, _lparam: int) -> bool:
             if not ctypes.windll.user32.IsWindowVisible(hwnd):
                 return True  # continue enumeration
 
             title_buf = ctypes.create_unicode_buffer(256)
-            ctypes.windll.user32.GetWindowTextW(
-                hwnd, title_buf, 256
-            )
+            ctypes.windll.user32.GetWindowTextW(hwnd, title_buf, 256)
             title = title_buf.value
             if not title:
                 return True  # skip untitled windows
 
             rect = _RECT()
-            ctypes.windll.user32.GetWindowRect(
-                hwnd, ctypes.byref(rect)
-            )
+            ctypes.windll.user32.GetWindowRect(hwnd, ctypes.byref(rect))
             results.append(
                 WindowInfo(
                     title=title,

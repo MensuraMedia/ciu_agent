@@ -92,13 +92,9 @@ class Rectangle:
     def __post_init__(self) -> None:
         """Validate that width and height are non-negative."""
         if self.width < 0:
-            raise ValueError(
-                f"Rectangle width must be >= 0, got {self.width}"
-            )
+            raise ValueError(f"Rectangle width must be >= 0, got {self.width}")
         if self.height < 0:
-            raise ValueError(
-                f"Rectangle height must be >= 0, got {self.height}"
-            )
+            raise ValueError(f"Rectangle height must be >= 0, got {self.height}")
 
     def contains_point(self, px: int, py: int) -> bool:
         """Check whether a point lies inside (or on the edge of) this rect.
@@ -110,10 +106,7 @@ class Rectangle:
         Returns:
             True if the point is within the rectangle bounds.
         """
-        return (
-            self.x <= px <= self.x + self.width
-            and self.y <= py <= self.y + self.height
-        )
+        return self.x <= px <= self.x + self.width and self.y <= py <= self.y + self.height
 
     def center(self) -> tuple[int, int]:
         """Return the center point of the rectangle.
@@ -190,10 +183,7 @@ class Zone:
     def __post_init__(self) -> None:
         """Validate confidence is within the expected range."""
         if not 0.0 <= self.confidence <= 1.0:
-            raise ValueError(
-                f"confidence must be in [0.0, 1.0], "
-                f"got {self.confidence}"
-            )
+            raise ValueError(f"confidence must be in [0.0, 1.0], got {self.confidence}")
 
     def contains_point(self, px: int, py: int) -> bool:
         """Check whether a screen point falls within this zone.

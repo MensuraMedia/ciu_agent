@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import json
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
@@ -46,10 +46,10 @@ from ciu_agent.config.settings import Settings
 from ciu_agent.models.actions import Action
 from ciu_agent.models.events import SpatialEvent
 
-
 # ---------------------------------------------------------------------------
 # Data structures
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class CursorSample:
@@ -99,6 +99,7 @@ class SessionMetadata:
 # Serialisation helpers
 # ---------------------------------------------------------------------------
 
+
 def _enum_safe_dict(obj: Any) -> dict[str, Any]:
     """Convert a dataclass to a dict, replacing Enum values with names.
 
@@ -141,6 +142,7 @@ def _walk_enums(data: Any) -> Any:
 # ---------------------------------------------------------------------------
 # ReplayBuffer
 # ---------------------------------------------------------------------------
+
 
 class ReplayBuffer:
     """Records frames, events, and actions into structured sessions.
@@ -200,8 +202,7 @@ class ReplayBuffer:
         """
         if self._metadata is not None:
             raise RuntimeError(
-                "A session is already in progress.  "
-                "Call stop_session() before starting a new one."
+                "A session is already in progress.  Call stop_session() before starting a new one."
             )
 
         if not session_id:
@@ -260,9 +261,7 @@ class ReplayBuffer:
             RuntimeError: If no session is currently active.
         """
         if self._metadata is None or self._session_dir is None:
-            raise RuntimeError(
-                "No active session.  Call start_session() first."
-            )
+            raise RuntimeError("No active session.  Call start_session() first.")
 
         self._cursor_log.append(
             CursorSample(
@@ -292,9 +291,7 @@ class ReplayBuffer:
             RuntimeError: If no session is currently active.
         """
         if self._metadata is None:
-            raise RuntimeError(
-                "No active session.  Call start_session() first."
-            )
+            raise RuntimeError("No active session.  Call start_session() first.")
         self._events.append(event)
         self._metadata.event_count += 1
 
@@ -311,9 +308,7 @@ class ReplayBuffer:
             RuntimeError: If no session is currently active.
         """
         if self._metadata is None:
-            raise RuntimeError(
-                "No active session.  Call start_session() first."
-            )
+            raise RuntimeError("No active session.  Call start_session() first.")
         self._actions.append(action)
         self._metadata.action_count += 1
 
@@ -334,9 +329,7 @@ class ReplayBuffer:
             RuntimeError: If no session is currently active.
         """
         if self._metadata is None or self._session_dir is None:
-            raise RuntimeError(
-                "No active session.  Call start_session() first."
-            )
+            raise RuntimeError("No active session.  Call start_session() first.")
 
         self._metadata.end_time = time.time()
 
@@ -351,18 +344,14 @@ class ReplayBuffer:
         events_path = self._session_dir / "events.jsonl"
         with events_path.open("w", encoding="utf-8") as fh:
             for event in self._events:
-                line = json.dumps(
-                    _enum_safe_dict(event), ensure_ascii=False
-                )
+                line = json.dumps(_enum_safe_dict(event), ensure_ascii=False)
                 fh.write(line + "\n")
 
         # -- Actions ---------------------------------------------------------
         actions_path = self._session_dir / "actions.jsonl"
         with actions_path.open("w", encoding="utf-8") as fh:
             for action in self._actions:
-                line = json.dumps(
-                    _enum_safe_dict(action), ensure_ascii=False
-                )
+                line = json.dumps(_enum_safe_dict(action), ensure_ascii=False)
                 fh.write(line + "\n")
 
         # -- Metadata --------------------------------------------------------
@@ -405,9 +394,7 @@ class ReplayBuffer:
         """
         meta_path = session_dir / "metadata.json"
         if not meta_path.exists():
-            raise FileNotFoundError(
-                f"No metadata.json found in {session_dir}"
-            )
+            raise FileNotFoundError(f"No metadata.json found in {session_dir}")
 
         with meta_path.open("r", encoding="utf-8") as fh:
             raw = json.load(fh)

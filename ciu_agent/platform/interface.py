@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import platform as _platform_mod
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 from numpy.typing import NDArray
@@ -85,9 +85,7 @@ class PlatformInterface(ABC):
     # ------------------------------------------------------------------
 
     @abstractmethod
-    def click(
-        self, x: int, y: int, button: str = "left"
-    ) -> None:
+    def click(self, x: int, y: int, button: str = "left") -> None:
         """Click at the given coordinates.
 
         Args:
@@ -97,9 +95,7 @@ class PlatformInterface(ABC):
         """
 
     @abstractmethod
-    def double_click(
-        self, x: int, y: int, button: str = "left"
-    ) -> None:
+    def double_click(self, x: int, y: int, button: str = "left") -> None:
         """Double-click at the given coordinates.
 
         Args:
@@ -221,6 +217,4 @@ def create_platform() -> PlatformInterface:
 
         return MacOSPlatform()
 
-    raise NotImplementedError(
-        f"Unsupported operating system: {system!r}"
-    )
+    raise NotImplementedError(f"Unsupported operating system: {system!r}")

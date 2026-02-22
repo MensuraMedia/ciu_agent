@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import time
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import cv2
 import numpy as np
@@ -112,9 +112,7 @@ class CaptureEngine:
         self._platform = platform
         self._settings = settings
 
-        maxlen = int(
-            settings.ring_buffer_seconds * settings.target_fps
-        )
+        maxlen = int(settings.ring_buffer_seconds * settings.target_fps)
         self._buffer: deque[CaptureFrame] = deque(maxlen=maxlen)
         self._frame_counter: int = 0
 
@@ -239,21 +237,15 @@ class CaptureEngine:
 
         diff = cv2.absdiff(gray_a, gray_b)
 
-        _, thresh = cv2.threshold(
-            diff, _DIFF_PIXEL_THRESHOLD, 255, cv2.THRESH_BINARY
-        )
+        _, thresh = cv2.threshold(diff, _DIFF_PIXEL_THRESHOLD, 255, cv2.THRESH_BINARY)
 
         total_pixels = thresh.shape[0] * thresh.shape[1]
         changed_pixels = int(cv2.countNonZero(thresh))
         changed_percent = (changed_pixels / total_pixels) * 100.0
 
-        contours, _ = cv2.findContours(
-            thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-        )
+        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-        changed_regions: list[tuple[int, int, int, int]] = [
-            cv2.boundingRect(c) for c in contours
-        ]
+        changed_regions: list[tuple[int, int, int, int]] = [cv2.boundingRect(c) for c in contours]
 
         tier = self._classify_tier(changed_percent)
 
