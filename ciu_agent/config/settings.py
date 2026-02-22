@@ -85,9 +85,12 @@ class Settings:
     hover_threshold_ms: int = 300
     motion_speed_pixels_per_sec: float = 1500.0
 
+    # -- Director -------------------------------------------------------------
+    step_delay_seconds: float = 2.0
+
     # -- API settings ---------------------------------------------------------
     api_timeout_vision_seconds: float = 30.0
-    api_timeout_text_seconds: float = 15.0
+    api_timeout_text_seconds: float = 30.0
     api_max_retries: int = 3
     api_backoff_base_seconds: float = 2.0
 

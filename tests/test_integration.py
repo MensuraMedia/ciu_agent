@@ -180,6 +180,7 @@ def _make_settings(
         session_dir=session_dir,
         save_frames_as_png=False,
         compress_video=False,
+        step_delay_seconds=0.0,
     )
 
 
@@ -287,6 +288,7 @@ def _build_full_stack(
     step_executor = StepExecutor(
         brush=brush,
         registry=registry,
+        platform=platform,
         settings=settings,
     )
     error_classifier = ErrorClassifier(settings)

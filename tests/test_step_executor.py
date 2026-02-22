@@ -204,7 +204,7 @@ def _build_executor(
         settings=s,
     )
 
-    executor = StepExecutor(brush, registry, s)
+    executor = StepExecutor(brush, registry, platform, s)
     return executor, brush, platform, registry
 
 

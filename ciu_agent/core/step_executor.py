@@ -40,6 +40,7 @@ from ciu_agent.core.zone_registry import ZoneRegistry
 from ciu_agent.models.actions import Action, ActionType
 from ciu_agent.models.events import SpatialEvent
 from ciu_agent.models.task import TaskStep
+from ciu_agent.platform.interface import PlatformInterface
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +103,8 @@ class StepExecutor:
             execution.
         registry: The ``ZoneRegistry`` used to verify that target zones
             exist before attempting navigation.
+        platform: OS-specific input/output driver for direct actions
+            (used by ``__global__`` zone steps).
         settings: Global configuration (reserved for future tuning
             knobs such as per-step timeouts).
     """
@@ -110,10 +113,12 @@ class StepExecutor:
         self,
         brush: BrushController,
         registry: ZoneRegistry,
+        platform: PlatformInterface,
         settings: Settings,
     ) -> None:
         self._brush = brush
         self._registry = registry
+        self._platform = platform
         self._settings = settings
 
     # ------------------------------------------------------------------
@@ -161,7 +166,11 @@ class StepExecutor:
                 timestamp=timestamp,
             )
 
-        # 2. Verify target zone exists.
+        # 2. Handle __global__ zone (OS-level actions, no zone needed).
+        if step.zone_id == "__global__":
+            return self._execute_global(step, action_type, timestamp)
+
+        # 3. Verify target zone exists.
         if not self._registry.contains(step.zone_id):
             logger.warning(
                 "step %d: zone %r not found in registry",
@@ -178,7 +187,7 @@ class StepExecutor:
                 timestamp=timestamp,
             )
 
-        # 3. Build the Action and execute.
+        # 4. Build the Action and execute.
         action = Action(
             type=action_type,
             target_zone_id=step.zone_id,
@@ -186,7 +195,7 @@ class StepExecutor:
         )
         brush_result = self._brush.execute_action(action, timestamp)
 
-        # 4. Translate BrushActionResult -> StepResult.
+        # 5. Translate BrushActionResult -> StepResult.
         return self._translate_result(step, brush_result, timestamp)
 
     # ------------------------------------------------------------------
@@ -206,6 +215,129 @@ class StepExecutor:
             string is not recognised.
         """
         return _ACTION_TYPE_MAP.get(action_type_str)
+
+    def _execute_global(
+        self,
+        step: TaskStep,
+        action_type: ActionType,
+        timestamp: float,
+    ) -> StepResult:
+        """Execute an OS-level action without targeting a specific zone.
+
+        Used for keyboard shortcuts (Win+R, Ctrl+S, Alt+Tab, etc.) and
+        text input that are not tied to any visible UI element.
+
+        Supported action types:
+
+        * ``KEY_PRESS`` -- sends a key or key combination.
+        * ``TYPE_TEXT`` -- types a string of characters.
+
+        Args:
+            step: The task step with ``zone_id == "__global__"``.
+            action_type: The resolved ``ActionType`` enum.
+            timestamp: Execution timestamp.
+
+        Returns:
+            A ``StepResult`` describing the outcome.
+        """
+        try:
+            if action_type == ActionType.KEY_PRESS:
+                key = step.parameters.get("key")
+                if not key:
+                    return StepResult(
+                        step=step,
+                        success=False,
+                        action_result=None,
+                        error="__global__ key_press missing 'key' parameter",
+                        error_type="action_failed",
+                        timestamp=timestamp,
+                    )
+                logger.info(
+                    "step %d: global key_press %r",
+                    step.step_number,
+                    key,
+                )
+                self._platform.key_press(key)
+
+            elif action_type == ActionType.TYPE_TEXT:
+                text = step.parameters.get("text")
+                if not text:
+                    return StepResult(
+                        step=step,
+                        success=False,
+                        action_result=None,
+                        error="__global__ type_text missing 'text' parameter",
+                        error_type="action_failed",
+                        timestamp=timestamp,
+                    )
+                logger.info(
+                    "step %d: global type_text (%d chars)",
+                    step.step_number,
+                    len(text),
+                )
+                self._platform.type_text(text)
+
+            elif action_type == ActionType.CLICK:
+                x = step.parameters.get("x")
+                y = step.parameters.get("y")
+                if x is None or y is None:
+                    return StepResult(
+                        step=step,
+                        success=False,
+                        action_result=None,
+                        error=(
+                            "__global__ click requires 'x' and 'y' "
+                            "parameters"
+                        ),
+                        error_type="action_failed",
+                        timestamp=timestamp,
+                    )
+                button = step.parameters.get("button", "left")
+                logger.info(
+                    "step %d: global click at (%s, %s)",
+                    step.step_number,
+                    x,
+                    y,
+                )
+                self._platform.click(int(x), int(y), button)
+
+            else:
+                return StepResult(
+                    step=step,
+                    success=False,
+                    action_result=None,
+                    error=(
+                        f"__global__ zone does not support action type "
+                        f"{action_type.value!r}"
+                    ),
+                    error_type="action_failed",
+                    timestamp=timestamp,
+                )
+
+        except Exception as exc:
+            logger.error(
+                "step %d: global action failed: %s",
+                step.step_number,
+                exc,
+            )
+            return StepResult(
+                step=step,
+                success=False,
+                action_result=None,
+                error=str(exc),
+                error_type="action_failed",
+                timestamp=timestamp,
+            )
+
+        return StepResult(
+            step=step,
+            success=True,
+            action_result=None,
+            events=[],
+            error="",
+            error_type="",
+            timestamp=timestamp,
+        )
 
     def _translate_result(
         self,

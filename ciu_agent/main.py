@@ -29,7 +29,7 @@ from ciu_agent.config.settings import Settings
 from ciu_agent.core.action_executor import ActionExecutor
 from ciu_agent.core.brush_controller import BrushController
 from ciu_agent.core.canvas_mapper import CanvasMapper
-from ciu_agent.core.capture_engine import CaptureEngine, DiffResult
+from ciu_agent.core.capture_engine import CaptureEngine
 from ciu_agent.core.director import Director, TaskResult
 from ciu_agent.core.error_classifier import ErrorClassifier
 from ciu_agent.core.motion_planner import MotionPlanner
@@ -38,7 +38,7 @@ from ciu_agent.core.state_classifier import StateClassifier
 from ciu_agent.core.step_executor import StepExecutor
 from ciu_agent.core.task_planner import TaskPlanner
 from ciu_agent.core.tier1_analyzer import Tier1Analyzer
-from ciu_agent.core.tier2_analyzer import Tier2Analyzer
+from ciu_agent.core.tier2_analyzer import Tier2Analyzer, Tier2Request
 from ciu_agent.core.zone_registry import ZoneRegistry
 from ciu_agent.core.zone_tracker import ZoneTracker
 from ciu_agent.platform.interface import PlatformInterface, create_platform
@@ -110,48 +110,45 @@ class CIUAgent:
     def startup(self) -> None:
         """Perform initial capture and Tier 2 analysis to populate zones.
 
-        Captures the first frame, forces a full Tier 2 canvas analysis
-        (100% changed), and logs the number of zones detected.  After
-        this method returns the zone registry is populated and the
-        Director is ready to execute tasks.
+        Captures the first frame, sends it directly to the Tier 2
+        analyser (bypassing the StateClassifier's stability-wait
+        logic), and replaces the zone registry with the API response.
+
+        After this method returns the zone registry is populated and
+        the Director is ready to execute tasks.
         """
         logger.info("Starting initial capture and Tier 2 analysis")
 
         # 1. Capture initial frame.
         frame = self.capture_engine.capture_to_buffer()
-        logger.info(
-            "Initial frame captured: %dx%d",
-            frame.image.shape[1],
-            frame.image.shape[0],
-        )
+        h, w = frame.image.shape[:2]
+        logger.info("Initial frame captured: %dx%d", w, h)
 
-        # 2. Build a DiffResult with 100% change to force Tier 2.
-        forced_diff = DiffResult(
-            changed_percent=100.0,
-            changed_regions=[],
-            tier_recommendation=2,
+        # 2. Encode and send directly to Tier 2 (bypass classifier
+        #    which would set should_wait=True for 100% change).
+        image_data = Tier2Analyzer.encode_frame(frame.image)
+        request = Tier2Request(
+            image_data=image_data,
+            screen_width=w,
+            screen_height=h,
+            context="Initial full-screen analysis on startup.",
         )
+        response = self.tier2.analyze_sync(request)
 
-        # 3. Get cursor position and active window for context.
-        cursor_pos = (frame.cursor_x, frame.cursor_y)
-        active_window = self.platform.get_active_window()
-
-        # 4. Run canvas mapper — routes through Tier 2.
-        result = self.canvas_mapper.process_frame(
-            current_frame=frame.image,
-            previous_frame=frame.image,
-            diff=forced_diff,
-            cursor_pos=cursor_pos,
-            active_window=active_window,
-        )
-
-        logger.info(
-            "Initial analysis complete: %d zones detected "
-            "(tier %d, %.1f ms)",
-            result.total_zones,
-            result.tier_used,
-            result.processing_time_ms,
-        )
+        if response.success:
+            self.registry.replace_all(response.zones)
+            logger.info(
+                "Initial Tier 2 analysis: %d zones detected "
+                "(%.0f ms, %d tokens)",
+                len(response.zones),
+                response.latency_ms,
+                response.token_count,
+            )
+        else:
+            logger.warning(
+                "Initial Tier 2 analysis failed: %s",
+                response.error,
+            )
 
     def shutdown(self) -> None:
         """Stop the replay session if one is active.
@@ -309,29 +306,54 @@ def build_agent(
     )
 
     # 12. Task Planner
-    task_planner = TaskPlanner(settings, api_key=api_key)
+    task_planner = TaskPlanner(
+        settings,
+        api_key=api_key,
+        platform_name=platform.get_platform_name(),
+    )
 
     # 13. Step Executor
     step_executor = StepExecutor(
         brush=brush,
         registry=registry,
+        platform=platform,
         settings=settings,
     )
 
     # 14. Error Classifier
     error_classifier = ErrorClassifier(settings)
 
-    # 15. Director
+    # 15. Recapture callback for Director screen re-analysis.
+    def _recapture() -> int:
+        """Re-capture the screen and update the zone registry."""
+        frame = capture_engine.capture_to_buffer()
+        h, w = frame.image.shape[:2]
+        image_data = Tier2Analyzer.encode_frame(frame.image)
+        req = Tier2Request(
+            image_data=image_data,
+            screen_width=w,
+            screen_height=h,
+            context="Re-analysis after UI state change.",
+        )
+        resp = tier2.analyze_sync(req)
+        if resp.success:
+            registry.replace_all(resp.zones)
+            return len(resp.zones)
+        logger.warning("Re-capture Tier 2 failed: %s", resp.error)
+        return registry.count
+
+    # 16. Director
     director = Director(
         planner=task_planner,
         step_executor=step_executor,
         error_classifier=error_classifier,
         registry=registry,
         canvas_mapper=canvas_mapper,
+        recapture_fn=_recapture,
         settings=settings,
     )
 
-    # 16. Replay Buffer
+    # 17. Replay Buffer
     replay = ReplayBuffer(settings)
 
     return CIUAgent(

@@ -58,13 +58,15 @@ _API_VERSION: str = "2023-06-01"
 # System prompt that instructs Claude to return a step-by-step plan.
 # ------------------------------------------------------------------
 _SYSTEM_PROMPT: str = (
-    "You are a GUI task execution planner. Given a task description "
-    "and a list of available UI zones on screen, produce a step-by-step "
-    "plan to accomplish the task.\n"
+    "You are a GUI task execution planner for a desktop automation agent. "
+    "Given a task description, OS information, and a list of available UI "
+    "zones currently visible on screen, produce a step-by-step plan to "
+    "accomplish the task.\n"
     "\n"
     "Return ONLY a JSON array. Each element is an object with:\n"
     '  "step_number": int\n'
-    '  "zone_id": string — the ID of the zone to interact with\n'
+    '  "zone_id": string — the ID of the zone to interact with, '
+    'or "__global__" for OS-level keyboard/system actions\n'
     '  "zone_label": string — the label for debugging\n'
     '  "action_type": string — one of: click, double_click, '
     "type_text, key_press, scroll\n"
@@ -75,14 +77,82 @@ _SYSTEM_PROMPT: str = (
     '  "description": string — human-readable description of what '
     "this step does\n"
     "\n"
-    "Guidelines:\n"
-    "- Use only zone IDs from the provided list.\n"
-    "- Prefer clicking buttons and links over keyboard shortcuts.\n"
-    "- For text input: first click the text field, then use type_text.\n"
-    "- Include expected_change to help verify each step succeeded.\n"
-    "- Keep plans under 15 steps.\n"
-    "- If the task is impossible with available zones, return an "
-    "empty array.\n"
+    "=== METHODOLOGY ===\n"
+    "Follow this sequential methodology when planning:\n"
+    "\n"
+    "1. EXAMINE THE SCREEN: Look at all available zones to understand "
+    "what is currently visible (desktop, application, dialog, etc.).\n"
+    "\n"
+    "2. IDENTIFY THE ENVIRONMENT: Determine the OS type from the zone "
+    "list (Windows taskbar, macOS dock, Linux panel). Use this to "
+    "choose the correct keyboard shortcuts and UI conventions.\n"
+    "\n"
+    "3. LOCATE THE SYSTEM MENU / LAUNCHER: Identify how to access the "
+    "OS program launcher:\n"
+    "  - Windows: taskbar search, Start menu, or Win+R / Win+S\n"
+    "  - macOS: Spotlight (Cmd+Space) or Launchpad\n"
+    "  - Linux: application menu or Alt+F2\n"
+    "\n"
+    "4. ACCESS THE PROGRAM LAUNCHER: If the target application is not "
+    "already open, use the appropriate method to reach it:\n"
+    "  - Click the Start/Search zone if visible in the zone list\n"
+    "  - Use __global__ key_press for keyboard shortcuts\n"
+    "\n"
+    "5. FIND AND OPEN THE APPLICATION: Search for or navigate to the "
+    "desired application. Type the app name, scroll if needed, then "
+    "click to open it or press Enter.\n"
+    "\n"
+    "6. WAIT FOR APPLICATION: After launching, the screen will change. "
+    "Include an expected_change describing the new application window.\n"
+    "\n"
+    "7. OPERATE THE APPLICATION: Interact with the application's menus, "
+    "buttons, text fields, and controls in sequential order to achieve "
+    "the task. Use zone IDs when the target element is in the zone list. "
+    "Use __global__ for keyboard shortcuts within the app.\n"
+    "\n"
+    "8. COMPLETE THE OPERATION: Perform save, confirm, or close actions "
+    "as needed to finalise the task.\n"
+    "\n"
+    "=== EXECUTION MODES ===\n"
+    "The agent supports TWO execution modes. Use BOTH as appropriate:\n"
+    "\n"
+    "VISUAL MODE (preferred when zones are available):\n"
+    "- Use a zone_id from the provided zone list to click, type, or "
+    "interact with a visible UI element.\n"
+    "- The agent will physically move the mouse cursor to the zone and "
+    "perform the action. This provides visual feedback to the user.\n"
+    "- ALWAYS prefer visual mode when a matching zone is visible.\n"
+    "\n"
+    "COMMAND MODE (when no zone is available):\n"
+    '- Use zone_id "__global__" with action_type "key_press" or '
+    '"type_text" for keyboard shortcuts and text entry.\n'
+    "- Use this for OS-level shortcuts, launching apps, or when the "
+    "target element has not yet appeared on screen.\n"
+    "\n"
+    "=== GUIDELINES ===\n"
+    "- PREFER VISUAL MODE: If a zone exists for the target element, "
+    "use its zone_id so the cursor physically navigates to it.\n"
+    "- Use __global__ only when no matching zone is visible.\n"
+    "- Common __global__ keyboard shortcuts:\n"
+    '  Windows: {"key": "win+r"} (Run dialog), {"key": "win+s"} '
+    "(Search), "
+    '{"key": "ctrl+s"} (Save), {"key": "alt+f4"} (Close), '
+    '{"key": "enter"} (Confirm)\n'
+    '  macOS: {"key": "cmd+space"} (Spotlight), {"key": "cmd+s"} '
+    "(Save)\n"
+    "- For text input: click the target text field zone first (visual "
+    "mode), then use type_text on that zone. Only use __global__ "
+    "type_text when the field is already focused and no zone exists.\n"
+    "- Include expected_change to help verify each step succeeded. The "
+    "agent will re-capture the screen and re-detect zones after steps "
+    "with significant UI changes.\n"
+    "- Keep plans under 20 steps.\n"
+    "- IMPORTANT: If the task requires opening an app that is NOT "
+    "currently visible, you MUST include steps to find and launch it "
+    "first. Do not assume it is already open.\n"
+    "- After launching an application, subsequent steps will see NEW "
+    "zones from the opened app. Plan to interact with those new zones "
+    "using visual mode.\n"
 )
 
 
@@ -106,6 +176,7 @@ class TaskPlanner:
         self,
         settings: Settings,
         api_key: str = "",
+        platform_name: str = "",
     ) -> None:
         """Initialise with settings and optional API key.
 
@@ -116,11 +187,15 @@ class TaskPlanner:
                 ``ANTHROPIC_API_KEY`` environment variable is used.
                 A missing key is not an error at construction time
                 (useful for tests), but ``plan`` will fail.
+            platform_name: OS identifier (e.g. ``'windows'``,
+                ``'linux'``, ``'macos'``) included in prompts so
+                the planner can choose correct shortcuts.
         """
         self._settings = settings
         self._api_key: str = api_key or os.environ.get(
             "ANTHROPIC_API_KEY", ""
         )
+        self._platform_name = platform_name
 
     # -- Zone summarisation ----------------------------------------
 
@@ -165,15 +240,23 @@ class TaskPlanner:
             A dictionary matching the Anthropic Messages API schema.
         """
         zone_summary = self._summarize_zones(zones)
+        os_line = (
+            f"Operating system: {self._platform_name}\n"
+            if self._platform_name
+            else ""
+        )
 
         user_text = (
             f"Task: {task}\n"
             "\n"
-            "Available zones:\n"
+            f"{os_line}"
+            f"Number of zones detected: {len(zones)}\n"
+            "\n"
+            "Available zones on screen:\n"
             f"{zone_summary}\n"
             "\n"
-            "Produce a step-by-step plan as described in the system "
-            "prompt."
+            "Following the methodology in the system prompt, produce "
+            "a step-by-step plan to accomplish this task."
         )
 
         payload: dict = {

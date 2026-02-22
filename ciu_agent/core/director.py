@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from ciu_agent.config.settings import Settings
@@ -46,13 +47,14 @@ from ciu_agent.models.task import TaskPlan, TaskStep
 logger = logging.getLogger(__name__)
 
 # Maximum number of API calls per task to prevent runaway costs.
-_MAX_API_CALLS: int = 10
+_MAX_API_CALLS: int = 20
 
 # Maximum number of re-plan attempts before aborting.
 _MAX_REPLANS: int = 3
 
 # Maximum retries for a single step before escalating.
 _MAX_STEP_RETRIES: int = 3
+
 
 
 @dataclass
@@ -99,6 +101,11 @@ class Director:
         registry: Shared zone registry (read for planning context).
         canvas_mapper: Canvas mapper for Tier 2 re-analysis.  May be
             ``None`` if re-analysis is not supported.
+        recapture_fn: Optional callback that re-captures the screen and
+            re-populates the zone registry.  Called between steps when
+            the ``expected_change`` field suggests a major UI transition
+            (e.g. an application opening).  Signature: ``() -> int``
+            returning the number of zones detected.
         settings: Global configuration.
     """
 
@@ -109,6 +116,7 @@ class Director:
         error_classifier: ErrorClassifier,
         registry: ZoneRegistry,
         canvas_mapper: object | None = None,
+        recapture_fn: Callable[[], int] | None = None,
         settings: Settings | None = None,
     ) -> None:
         self._planner = planner
@@ -116,6 +124,7 @@ class Director:
         self._error_classifier = error_classifier
         self._registry = registry
         self._canvas_mapper = canvas_mapper
+        self._recapture_fn = recapture_fn
         self._settings = settings or Settings()
         self._api_calls_used: int = 0
 
@@ -203,6 +212,14 @@ class Director:
             if result.success:
                 steps_completed += 1
                 step_index += 1
+                if step_index < len(current_plan.steps):
+                    # Allow the screen to update before the next step.
+                    delay = self._settings.step_delay_seconds
+                    if delay > 0:
+                        time.sleep(delay)
+                    # Re-capture screen if this step likely changed the
+                    # UI significantly (app launch, dialog open, etc.).
+                    self._maybe_recapture(step)
                 continue
 
             # Step failed — classify and recover.
@@ -449,6 +466,42 @@ class Director:
         if escalated.recovery_action == RecoveryAction.ABORT:
             return None
         return "replan"
+
+    def _maybe_recapture(self, step: TaskStep) -> None:
+        """Re-capture and re-analyse the screen if a step likely changed UI.
+
+        Heuristic: if the step's ``expected_change`` mentions keywords
+        that suggest a major state transition (window, dialog, app,
+        open, launch, save), trigger a full recapture.
+
+        Args:
+            step: The just-completed task step.
+        """
+        if self._recapture_fn is None:
+            return
+
+        change = step.expected_change.lower()
+        triggers = (
+            "window", "dialog", "open", "launch", "appear",
+            "application", "notepad", "save as", "menu",
+        )
+        if not any(keyword in change for keyword in triggers):
+            return
+
+        logger.info(
+            "Step %d expected_change suggests UI transition: %r — "
+            "re-capturing screen",
+            step.step_number,
+            step.expected_change,
+        )
+        try:
+            zone_count = self._recapture_fn()
+            self._api_calls_used += 1
+            logger.info(
+                "Re-capture complete: %d zones detected", zone_count,
+            )
+        except Exception as exc:
+            logger.error("Re-capture failed: %s", exc)
 
     def _trigger_reanalysis(self) -> None:
         """Trigger a Tier 2 canvas re-analysis if a mapper is available.

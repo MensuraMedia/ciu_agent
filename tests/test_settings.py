@@ -64,8 +64,8 @@ class TestGetDefaultSettings:
         assert get_default_settings().api_timeout_vision_seconds == 30.0
 
     def test_api_timeout_text_seconds_default(self) -> None:
-        """Default api_timeout_text_seconds is 15.0."""
-        assert get_default_settings().api_timeout_text_seconds == 15.0
+        """Default api_timeout_text_seconds is 30.0."""
+        assert get_default_settings().api_timeout_text_seconds == 30.0
 
     def test_api_max_retries_default(self) -> None:
         """Default api_max_retries is 3."""

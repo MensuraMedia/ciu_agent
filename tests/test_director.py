@@ -164,7 +164,7 @@ def _build_director(
     canvas_mapper: object | None = None,
 ) -> tuple[Director, MockPlanner, MockStepExecutor, ZoneRegistry]:
     """Build a Director with real ErrorClassifier and optional overrides."""
-    settings = Settings()
+    settings = Settings(step_delay_seconds=0.0)
     reg = registry or ZoneRegistry()
     pl = planner or MockPlanner()
     ex = executor or MockStepExecutor()
