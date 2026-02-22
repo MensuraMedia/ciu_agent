@@ -1,82 +1,93 @@
 {
-  "phase": "Phase 4: Director",
-  "status": "complete",
-  "completed": "2026-02-22",
-  "previous_phase": "Phase 3: Brush (complete 2026-02-22)",
+  "phase": "Phase 5: Integration and Hardening",
+  "status": "in_progress",
+  "started": "2026-02-22",
+  "previous_phase": "Phase 4: Director (complete 2026-02-22)",
   "tasks": [
     {
-      "id": "P4-001",
-      "title": "Implement TaskPlanner (Claude API task decomposition)",
-      "agent": "director-specialist:task-planner",
-      "status": "complete",
+      "id": "P5-001",
+      "title": "Main entry point (ciu_agent/main.py)",
+      "agent": "integration-specialist",
+      "status": "pending",
       "blocked_by": [],
-      "blocks": ["P4-004"],
+      "blocks": ["P5-002"],
       "acceptance": [
-        "Build structured prompt from task + zone registry state",
-        "Parse Claude API JSON response into TaskPlan with steps",
-        "Handle API errors with retry/backoff",
-        "TaskStep dataclass with zone_id, action_type, parameters, expected_change",
-        "Tests pass with mocked API"
+        "Wire all components: platform, capture, canvas mapper, brush, director, replay",
+        "CLI interface with --task and --api-key arguments",
+        "Startup sequence: capture -> tier2 analysis -> zone registry -> ready",
+        "Main loop: capture frame -> process -> brush update -> director step",
+        "Graceful shutdown with session save",
+        "Logging configuration"
       ]
     },
     {
-      "id": "P4-002",
-      "title": "Implement StepExecutor (step execution via BrushController)",
-      "agent": "director-specialist:step-executor",
-      "status": "complete",
-      "blocked_by": [],
-      "blocks": ["P4-004"],
-      "acceptance": [
-        "Execute a single TaskStep via BrushController",
-        "Verify expected canvas change after action",
-        "Return StepResult with success/failure and events",
-        "Timeout detection for expected changes",
-        "Tests pass"
-      ]
-    },
-    {
-      "id": "P4-003",
-      "title": "Implement ErrorClassifier (error classification + recovery)",
-      "agent": "director-specialist:error-classifier",
-      "status": "complete",
-      "blocked_by": [],
-      "blocks": ["P4-004"],
-      "acceptance": [
-        "Classify errors: zone_not_found, wrong_zone, timeout, brush_lost, action_failed",
-        "Determine recovery strategy per error type",
-        "RecoveryAction enum: retry, replan, reanalyze, abort",
-        "Tests pass"
-      ]
-    },
-    {
-      "id": "P4-004",
-      "title": "Implement Director orchestrator",
-      "agent": "director-specialist",
-      "status": "complete",
-      "blocked_by": ["P4-001", "P4-002", "P4-003"],
-      "blocks": ["P4-005"],
-      "acceptance": [
-        "Wire planner, executor, error classifier together",
-        "execute_task(): decompose + execute steps + handle errors",
-        "Re-planning on recoverable errors",
-        "Task completion verification",
-        "API call budget tracking",
-        "Tests pass"
-      ]
-    },
-    {
-      "id": "P4-005",
-      "title": "Full Phase 4 test suite and validation",
+      "id": "P5-002",
+      "title": "End-to-end integration tests",
       "agent": "test-engineer",
-      "status": "complete",
-      "blocked_by": ["P4-004"],
+      "status": "pending",
+      "blocked_by": ["P5-001"],
+      "blocks": ["P5-006"],
       "acceptance": [
-        "Unit tests for all modules",
-        "Integration test for director pipeline",
+        "Full pipeline test with MockPlatform (capture -> canvas -> brush -> director)",
+        "Error recovery integration: zone_not_found triggers reanalysis + replan",
+        "API budget enforcement across full pipeline",
+        "Replay buffer integration: session recorded during task execution",
+        "Tests pass"
+      ]
+    },
+    {
+      "id": "P5-003",
+      "title": "Replay viewer for debugging sessions",
+      "agent": "integration-specialist:replay",
+      "status": "pending",
+      "blocked_by": [],
+      "blocks": ["P5-006"],
+      "acceptance": [
+        "CLI tool to play back recorded sessions",
+        "Display frame with cursor overlay",
+        "Show zone boundaries, spatial events, and director decisions",
+        "Step-through mode and continuous playback"
+      ]
+    },
+    {
+      "id": "P5-004",
+      "title": "Update README with setup, usage, examples",
+      "agent": "documentation",
+      "status": "pending",
+      "blocked_by": ["P5-001"],
+      "blocks": ["P5-006"],
+      "acceptance": [
+        "Installation instructions",
+        "Quick-start usage example",
+        "Architecture overview",
+        "API documentation for public interfaces",
+        "Current project status updated"
+      ]
+    },
+    {
+      "id": "P5-005",
+      "title": "Create CHANGELOG.md",
+      "agent": "documentation",
+      "status": "pending",
+      "blocked_by": [],
+      "blocks": ["P5-006"],
+      "acceptance": [
+        "Entries for all 5 phases",
+        "Key features and components listed",
+        "Follows keep-a-changelog format"
+      ]
+    },
+    {
+      "id": "P5-006",
+      "title": "Full test suite validation and final commit",
+      "agent": "test-engineer",
+      "status": "pending",
+      "blocked_by": ["P5-002", "P5-003", "P5-004", "P5-005"],
+      "acceptance": [
         "All tests pass",
-        "Lint clean"
-      ],
-      "result": "858 tests passing in 1.75s, lint clean"
+        "Lint clean",
+        "Committed and pushed"
+      ]
     }
   ]
 }

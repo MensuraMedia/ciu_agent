@@ -72,9 +72,61 @@ See `docs/token_ops.md` for the full policy and `docs/token_savings.md` for proc
 - Claude API access (Max subscription or API key)
 - No GPU required — all local compute runs on CPU
 
+## Installation
+
+```bash
+git clone https://github.com/MensuraMedia/ciu_agent.git
+cd ciu_agent
+pip install -r requirements.txt
+```
+
+## Usage
+
+### Run a task
+
+```bash
+python -m ciu_agent.main --task "Open Notepad and type hello world" --api-key sk-ant-...
+```
+
+Or set the API key as an environment variable:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+python -m ciu_agent.main --task "Click the Save button"
+```
+
+### Options
+
+- `--task` / `-t`: Task to execute (required)
+- `--api-key` / `-k`: Anthropic API key (or set `ANTHROPIC_API_KEY`)
+- `--verbose` / `-v`: Enable debug logging
+
+### Replay a session
+
+```bash
+python -m ciu_agent.replay_viewer --session sessions/session_20260222_143000 --speed 2.0
+```
+
+### Run tests
+
+```bash
+python -m pytest tests/ -v
+```
+
+## API Overview
+
+| Class | Module | Description |
+|-------|--------|-------------|
+| `CIUAgent` | `ciu_agent.main` | Main agent entry point |
+| `Director` | `ciu_agent.core.director` | Task orchestrator |
+| `BrushController` | `ciu_agent.core.brush_controller` | Cursor control |
+| `CanvasMapper` | `ciu_agent.core.canvas_mapper` | Zone map |
+| `CaptureEngine` | `ciu_agent.core.capture_engine` | Screen capture |
+| `ReplayBuffer` | `ciu_agent.core.replay_buffer` | Session recording |
+
 ## Project Status
 
-**Current Phase:** Phase 1 — Foundation (Not Started)
+**Current Phase:** All 5 phases complete (v0.1.0)
 
 See `docs/phases.md` for the build roadmap.
 
