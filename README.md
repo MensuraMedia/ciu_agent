@@ -34,6 +34,37 @@ Three analysis tiers:
 
 See `docs/architecture.md` for the full system design.
 
+## Agents
+
+The project is built using a conductor pattern with specialized agents. Each agent owns a domain and operates within its own context window. The Conductor orchestrates across domains.
+
+| Agent | Role | Model Tier | Owns |
+|-------|------|------------|------|
+| **Conductor** | Orchestration — decomposes phases into tasks, assigns work, tracks progress, resolves conflicts | — | Task board, phase workflow |
+| **Architect** | System design — defines component interfaces, resolves cross-component conflicts, reviews structural changes | Opus | Architecture docs, interfaces, data models |
+| **Platform Engineer** | Cross-platform abstraction — implements OS-specific capture, input, and cursor functions | Sonnet | `ciu_agent/platform/` |
+| **Capture Specialist** | Screen recording — continuous capture, frame ring buffer, Tier 0 differencing, session recording | Sonnet | `ciu_agent/core/capture_engine.py` |
+| **Canvas Specialist** | Zone segmentation — builds and maintains the spatial zone map, Tier 1/2 analysis, zone registry | Opus | `ciu_agent/core/canvas_mapper.py` |
+| **Brush Specialist** | Cursor tracking — continuous zone mapping, spatial events, motion trajectories, action execution | Sonnet | `ciu_agent/core/brush_controller.py` |
+| **Director Specialist** | Task planning — natural language decomposition, step execution, error recovery, task verification | Opus | `ciu_agent/core/director.py` |
+| **Token Warden** | Cost enforcement — tracks per-agent token budgets, flags violations, enforces compaction, produces session reports | Sonnet | Token logs and violation records |
+| **Test Engineer** | Testing — unit tests, integration tests, mock builders, cross-platform validation | Sonnet | `tests/` |
+| **Documentation** | Docs — keeps architecture docs, README, docstrings, and changelog current | Sonnet | `docs/`, README |
+
+Each agent can spawn sub-agents for focused tasks within its domain. See `docs/agents.md` for full sub-agent definitions and `docs/teams.md` for phase-specific team configurations.
+
+## Token Operations
+
+All sessions follow a token operations policy to minimize API costs and context waste. Key principles:
+
+- **Progressive disclosure** — Load docs only when the current task needs them, not all at once
+- **Tiered analysis** — Use the cheapest effective method for every task (local tools before API calls)
+- **Subagent hygiene** — Delegate large file reads and verbose commands to subagents to keep the main context clean
+- **Budget enforcement** — The Token Warden monitors per-agent budgets and triggers compaction at 70% capacity
+- **MCP integration** — GitHub, Context7, Sequential Thinking, and Memory MCPs provide structured access to tools and knowledge without bloating the context window
+
+See `docs/token_ops.md` for the full policy and `docs/token_savings.md` for procedures.
+
 ## Requirements
 
 - Python 3.10+
@@ -59,6 +90,10 @@ See `docs/phases.md` for the build roadmap.
 | `docs/teams.md` | Team structures per phase |
 | `docs/features.md` | Features, capabilities, and function index |
 | `docs/skills.md` | Reusable skill definitions |
+| `docs/permissions.md` | Permissions policy for Claude Code sessions |
+| `docs/token_ops.md` | Token operations policy and task-to-tool routing |
+| `docs/token_savings.md` | Token-saving procedures and anti-patterns |
+| `docs/token_warden_agent.md` | Token Warden agent specification |
 
 ## Repository
 
