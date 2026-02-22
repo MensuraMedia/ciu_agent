@@ -1,78 +1,91 @@
 {
-  "phase": "Phase 1: Foundation",
-  "status": "complete",
-  "completed_date": "2026-02-22",
+  "phase": "Phase 2: Canvas",
+  "status": "in_progress",
+  "previous_phase": "Phase 1: Foundation (complete 2026-02-22)",
   "tasks": [
     {
-      "id": "P1-001",
-      "title": "Create package scaffolding and requirements.txt",
-      "agent": "conductor",
+      "id": "P2-001",
+      "title": "Implement Zone Registry with CRUD operations",
+      "agent": "canvas-specialist:registry-manager",
       "status": "complete",
       "blocked_by": [],
-      "blocks": ["P1-002", "P1-003", "P1-004", "P1-005"]
+      "blocks": ["P2-005"],
+      "acceptance": [
+        "Register, update, remove, query zones",
+        "Find by label, type, point, ID",
+        "Zone expiry based on last_seen timestamp",
+        "Tests pass"
+      ]
     },
     {
-      "id": "P1-002",
-      "title": "Implement configuration defaults",
-      "agent": "capture-specialist",
+      "id": "P2-002",
+      "title": "Implement Tier 2 analyzer (Claude API prompt + parser)",
+      "agent": "canvas-specialist:api-analyst",
       "status": "complete",
-      "blocked_by": ["P1-001"],
-      "blocks": ["P1-006"]
+      "blocked_by": [],
+      "blocks": ["P2-005"],
+      "acceptance": [
+        "Build structured prompt from frame",
+        "Parse Claude API JSON response into Zone list",
+        "Handle API errors with retry/backoff",
+        "Tests pass with mocked API"
+      ]
     },
     {
-      "id": "P1-003",
-      "title": "Implement data models (Zone, Events, Actions)",
-      "agent": "architect",
+      "id": "P2-003",
+      "title": "Implement Tier 1 analyzer (local OCR + region analysis)",
+      "agent": "canvas-specialist:zone-detector",
       "status": "complete",
-      "blocked_by": ["P1-001"],
-      "blocks": ["P1-006", "P1-008"]
+      "blocked_by": [],
+      "blocks": ["P2-005"],
+      "acceptance": [
+        "Analyze a changed region using OpenCV",
+        "Detect text changes via local methods",
+        "Return zone updates for the changed region",
+        "Tests pass"
+      ]
     },
     {
-      "id": "P1-004",
-      "title": "Implement PlatformInterface abstract base class",
-      "agent": "platform-engineer",
+      "id": "P2-004",
+      "title": "Implement state change classifier (tier routing heuristics)",
+      "agent": "canvas-specialist",
       "status": "complete",
-      "blocked_by": ["P1-001"],
-      "blocks": ["P1-005"]
+      "blocked_by": [],
+      "blocks": ["P2-005"],
+      "acceptance": [
+        "Classify DiffResult into tier 0/1/2 with heuristics",
+        "Handle app switch detection, dialog detection",
+        "Stability wait before analysis",
+        "Tests pass"
+      ]
     },
     {
-      "id": "P1-005",
-      "title": "Implement Windows platform layer",
-      "agent": "platform-engineer:windows-impl",
+      "id": "P2-005",
+      "title": "Implement Canvas Mapper orchestrator",
+      "agent": "canvas-specialist",
       "status": "complete",
-      "blocked_by": ["P1-004"],
-      "blocks": ["P1-006"]
+      "blocked_by": ["P2-001", "P2-002", "P2-003", "P2-004"],
+      "blocks": ["P2-006"],
+      "acceptance": [
+        "Wires all tiers + registry together",
+        "process_frame triggers correct tier",
+        "Zone registry updated after each analysis",
+        "Modular: each tier is swappable",
+        "Tests pass"
+      ]
     },
     {
-      "id": "P1-006",
-      "title": "Implement Capture Engine with Tier 0 frame differencing",
-      "agent": "capture-specialist",
-      "status": "complete",
-      "blocked_by": ["P1-002", "P1-003", "P1-005"],
-      "blocks": ["P1-007"]
-    },
-    {
-      "id": "P1-007",
-      "title": "Implement Replay Buffer",
-      "agent": "capture-specialist:recorder",
-      "status": "complete",
-      "blocked_by": ["P1-006"],
-      "blocks": ["P1-008"]
-    },
-    {
-      "id": "P1-008",
-      "title": "Implement Linux and macOS platform stubs",
-      "agent": "platform-engineer",
-      "status": "complete",
-      "blocked_by": ["P1-004"],
-      "blocks": []
-    },
-    {
-      "id": "P1-009",
-      "title": "Full Phase 1 test suite and validation",
+      "id": "P2-006",
+      "title": "Full Phase 2 test suite and validation",
       "agent": "test-engineer",
-      "status": "complete",
-      "blocked_by": ["P1-006", "P1-007", "P1-008"]
+      "status": "in_progress",
+      "blocked_by": ["P2-005"],
+      "acceptance": [
+        "Unit tests for all modules",
+        "Integration test for canvas mapper pipeline",
+        "All tests pass",
+        "Lint clean"
+      ]
     }
   ]
 }

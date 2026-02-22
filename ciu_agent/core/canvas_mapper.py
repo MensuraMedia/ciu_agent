@@ -63,7 +63,6 @@ from ciu_agent.config.settings import Settings
 from ciu_agent.core.capture_engine import DiffResult
 from ciu_agent.core.state_classifier import (
     ChangeClassification,
-    ChangeType,
     StateClassifier,
 )
 from ciu_agent.core.tier1_analyzer import RegionAnalysis, Tier1Analyzer
@@ -404,8 +403,7 @@ class CanvasMapper:
             zones_removed = old_count
 
             logger.info(
-                "Tier 2: %s — replaced %d zones with %d from API "
-                "(%.0f ms, %d tokens)",
+                "Tier 2: %s — replaced %d zones with %d from API (%.0f ms, %d tokens)",
                 classification.change_type.value,
                 old_count,
                 zones_added,
@@ -414,7 +412,8 @@ class CanvasMapper:
             )
         else:
             logger.warning(
-                "Tier 2: API call failed — %s", response.error,
+                "Tier 2: API call failed — %s",
+                response.error,
             )
 
         return ProcessFrameResult(
@@ -444,7 +443,8 @@ class CanvasMapper:
         )
         if expired:
             logger.debug(
-                "Expired %d stale zone(s)", len(expired),
+                "Expired %d stale zone(s)",
+                len(expired),
             )
         return expired
 

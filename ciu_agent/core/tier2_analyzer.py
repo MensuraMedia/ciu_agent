@@ -39,10 +39,11 @@ import logging
 import os
 import re
 import time
-import uuid
 from dataclasses import dataclass, field
 
 import httpx
+import numpy as np
+from numpy.typing import NDArray
 
 from ciu_agent.config.settings import Settings
 from ciu_agent.models.zone import (
@@ -100,6 +101,7 @@ _SYSTEM_PROMPT: str = (
 # Request / Response data classes
 # ------------------------------------------------------------------
 
+
 @dataclass
 class Tier2Request:
     """A request to analyse a full screenshot via the Claude API.
@@ -145,6 +147,7 @@ class Tier2Response:
 # Analyser
 # ------------------------------------------------------------------
 
+
 class Tier2Analyzer:
     """Sends screenshots to the Claude API for full zone detection.
 
@@ -174,9 +177,7 @@ class Tier2Analyzer:
                 (useful for tests), but ``analyze`` will fail.
         """
         self._settings = settings
-        self._api_key: str = api_key or os.environ.get(
-            "ANTHROPIC_API_KEY", ""
-        )
+        self._api_key: str = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
 
     # -- Prompt construction ----------------------------------------
 
@@ -194,9 +195,7 @@ class Tier2Analyzer:
         Returns:
             A dictionary matching the Anthropic Messages API schema.
         """
-        b64_image: str = base64.b64encode(request.image_data).decode(
-            "ascii"
-        )
+        b64_image: str = base64.b64encode(request.image_data).decode("ascii")
 
         user_text = (
             f"Screen dimensions: {request.screen_width}x"
@@ -256,9 +255,7 @@ class Tier2Analyzer:
         """
         cleaned = self._extract_json(response_text)
         if not cleaned:
-            logger.error(
-                "Tier2: unable to locate JSON in API response"
-            )
+            logger.error("Tier2: unable to locate JSON in API response")
             return []
 
         try:
@@ -286,16 +283,12 @@ class Tier2Analyzer:
                 zone = self._item_to_zone(item, idx)
                 zones.append(zone)
             except (KeyError, TypeError, ValueError) as exc:
-                logger.warning(
-                    "Tier2: skipping zone item %d: %s", idx, exc
-                )
+                logger.warning("Tier2: skipping zone item %d: %s", idx, exc)
         return zones
 
     # -- Async analysis ---------------------------------------------
 
-    async def analyze(
-        self, request: Tier2Request
-    ) -> Tier2Response:
+    async def analyze(self, request: Tier2Request) -> Tier2Response:
         """Send a screenshot to the Claude API and return zones.
 
         Implements retry with exponential back-off per the settings.
@@ -336,19 +329,12 @@ class Tier2Analyzer:
                         headers=headers,
                         json=payload,
                     )
-                elapsed_ms = (
-                    (time.monotonic_ns() - start_ns) / 1_000_000
-                )
+                elapsed_ms = (time.monotonic_ns() - start_ns) / 1_000_000
 
                 if http_resp.status_code == 200:
-                    return self._handle_success(
-                        http_resp, elapsed_ms
-                    )
+                    return self._handle_success(http_resp, elapsed_ms)
 
-                last_error = (
-                    f"HTTP {http_resp.status_code}: "
-                    f"{http_resp.text[:200]}"
-                )
+                last_error = f"HTTP {http_resp.status_code}: {http_resp.text[:200]}"
                 logger.warning(
                     "Tier2: attempt %d/%d failed: %s",
                     attempt + 1,
@@ -361,9 +347,7 @@ class Tier2Analyzer:
                     break
 
             except httpx.HTTPError as exc:
-                elapsed_ms = (
-                    (time.monotonic_ns() - start_ns) / 1_000_000
-                )
+                elapsed_ms = (time.monotonic_ns() - start_ns) / 1_000_000
                 last_error = f"{type(exc).__name__}: {exc}"
                 logger.warning(
                     "Tier2: attempt %d/%d error: %s",
@@ -374,9 +358,7 @@ class Tier2Analyzer:
 
             # Exponential back-off before next attempt.
             if attempt < retries - 1:
-                delay = self._settings.api_backoff_base_seconds * (
-                    2 ** attempt
-                )
+                delay = self._settings.api_backoff_base_seconds * (2**attempt)
                 import asyncio
 
                 await asyncio.sleep(delay)
@@ -389,9 +371,7 @@ class Tier2Analyzer:
 
     # -- Synchronous wrapper ----------------------------------------
 
-    def analyze_sync(
-        self, request: Tier2Request
-    ) -> Tier2Response:
+    def analyze_sync(self, request: Tier2Request) -> Tier2Response:
         """Synchronous version of ``analyze``.  Blocks until done.
 
         Uses a plain ``httpx`` synchronous client.  Retry logic
@@ -429,19 +409,12 @@ class Tier2Analyzer:
                         headers=headers,
                         json=payload,
                     )
-                elapsed_ms = (
-                    (time.monotonic_ns() - start_ns) / 1_000_000
-                )
+                elapsed_ms = (time.monotonic_ns() - start_ns) / 1_000_000
 
                 if http_resp.status_code == 200:
-                    return self._handle_success(
-                        http_resp, elapsed_ms
-                    )
+                    return self._handle_success(http_resp, elapsed_ms)
 
-                last_error = (
-                    f"HTTP {http_resp.status_code}: "
-                    f"{http_resp.text[:200]}"
-                )
+                last_error = f"HTTP {http_resp.status_code}: {http_resp.text[:200]}"
                 logger.warning(
                     "Tier2: sync attempt %d/%d failed: %s",
                     attempt + 1,
@@ -453,9 +426,7 @@ class Tier2Analyzer:
                     break
 
             except httpx.HTTPError as exc:
-                elapsed_ms = (
-                    (time.monotonic_ns() - start_ns) / 1_000_000
-                )
+                elapsed_ms = (time.monotonic_ns() - start_ns) / 1_000_000
                 last_error = f"{type(exc).__name__}: {exc}"
                 logger.warning(
                     "Tier2: sync attempt %d/%d error: %s",
@@ -465,10 +436,7 @@ class Tier2Analyzer:
                 )
 
             if attempt < retries - 1:
-                time.sleep(
-                    self._settings.api_backoff_base_seconds
-                    * (2 ** attempt)
-                )
+                time.sleep(self._settings.api_backoff_base_seconds * (2**attempt))
 
         return Tier2Response(
             success=False,
@@ -479,7 +447,7 @@ class Tier2Analyzer:
     # -- Frame encoding ---------------------------------------------
 
     @staticmethod
-    def encode_frame(frame: "NDArray[np.uint8]") -> bytes:
+    def encode_frame(frame: NDArray[np.uint8]) -> bytes:
         """Encode a BGR NumPy frame to PNG bytes.
 
         This is a convenience helper for callers that hold a raw
@@ -496,14 +464,11 @@ class Tier2Analyzer:
         Raises:
             RuntimeError: If OpenCV fails to encode the frame.
         """
-        import cv2
-        import numpy as np
+        import cv2  # noqa: E402 — lazy import avoids hard dependency
 
         success, buffer = cv2.imencode(".png", frame)
         if not success:
-            raise RuntimeError(
-                "cv2.imencode failed to encode frame as PNG"
-            )
+            raise RuntimeError("cv2.imencode failed to encode frame as PNG")
         return bytes(buffer)
 
     # -- Enum mappers -----------------------------------------------
@@ -585,9 +550,7 @@ class Tier2Analyzer:
 
         # Token usage (input_tokens + output_tokens).
         usage = body.get("usage", {})
-        token_count = usage.get(
-            "input_tokens", 0
-        ) + usage.get("output_tokens", 0)
+        token_count = usage.get("input_tokens", 0) + usage.get("output_tokens", 0)
 
         zones = self.parse_response(raw_text)
 
@@ -653,12 +616,8 @@ class Tier2Analyzer:
         )
 
         label: str = str(item.get("label", f"zone_{index}"))
-        zone_type = self._map_zone_type(
-            str(item.get("type", "unknown"))
-        )
-        zone_state = self._map_zone_state(
-            str(item.get("state", "unknown"))
-        )
+        zone_type = self._map_zone_type(str(item.get("type", "unknown")))
+        zone_state = self._map_zone_state(str(item.get("state", "unknown")))
 
         # Generate a stable id from the label or a UUID fallback.
         zone_id: str = item.get("id", "")

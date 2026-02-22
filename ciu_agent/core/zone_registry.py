@@ -89,9 +89,7 @@ class ZoneRegistry:
         """
         with self._lock:
             if zone_id not in self._zones:
-                raise KeyError(
-                    f"Zone '{zone_id}' not found in registry"
-                )
+                raise KeyError(f"Zone '{zone_id}' not found in registry")
             updated = replace(self._zones[zone_id], **kwargs)
             self._zones[zone_id] = updated
             return updated
@@ -110,9 +108,7 @@ class ZoneRegistry:
         """
         with self._lock:
             if zone_id not in self._zones:
-                raise KeyError(
-                    f"Zone '{zone_id}' not found in registry"
-                )
+                raise KeyError(f"Zone '{zone_id}' not found in registry")
             return self._zones.pop(zone_id)
 
     def get(self, zone_id: str) -> Zone | None:
@@ -158,10 +154,7 @@ class ZoneRegistry:
             A list of matching zones (may be empty).
         """
         needle = label.lower()
-        return [
-            z for z in self._zones.values()
-            if needle in z.label.lower()
-        ]
+        return [z for z in self._zones.values() if needle in z.label.lower()]
 
     def find_by_type(self, zone_type: ZoneType) -> list[Zone]:
         """Find all zones of a given type.
@@ -172,10 +165,7 @@ class ZoneRegistry:
         Returns:
             A list of matching zones (may be empty).
         """
-        return [
-            z for z in self._zones.values()
-            if z.type is zone_type
-        ]
+        return [z for z in self._zones.values() if z.type is zone_type]
 
     def find_by_state(self, state: ZoneState) -> list[Zone]:
         """Find all zones in a given state.
@@ -186,10 +176,7 @@ class ZoneRegistry:
         Returns:
             A list of matching zones (may be empty).
         """
-        return [
-            z for z in self._zones.values()
-            if z.state is state
-        ]
+        return [z for z in self._zones.values() if z.state is state]
 
     def find_at_point(self, x: int, y: int) -> list[Zone]:
         """Find all zones containing the given screen point.
@@ -205,10 +192,7 @@ class ZoneRegistry:
             A list of zones that contain the point, sorted by
             ascending area.
         """
-        hits = [
-            z for z in self._zones.values()
-            if z.contains_point(x, y)
-        ]
+        hits = [z for z in self._zones.values() if z.contains_point(x, y)]
         hits.sort(key=lambda z: z.bounds.area())
         return hits
 
@@ -221,10 +205,7 @@ class ZoneRegistry:
         Returns:
             A list of zones whose ``parent_id`` matches.
         """
-        return [
-            z for z in self._zones.values()
-            if z.parent_id == parent_id
-        ]
+        return [z for z in self._zones.values() if z.parent_id == parent_id]
 
     # ------------------------------------------------------------------
     # Bulk operations
@@ -271,10 +252,7 @@ class ZoneRegistry:
         """
         cutoff = current_time - max_age_seconds
         with self._lock:
-            stale: list[Zone] = [
-                z for z in self._zones.values()
-                if z.last_seen < cutoff
-            ]
+            stale: list[Zone] = [z for z in self._zones.values() if z.last_seen < cutoff]
             for z in stale:
                 del self._zones[z.id]
         return stale
@@ -295,9 +273,7 @@ class ZoneRegistry:
         """
         with self._lock:
             if zone_id not in self._zones:
-                raise KeyError(
-                    f"Zone '{zone_id}' not found in registry"
-                )
+                raise KeyError(f"Zone '{zone_id}' not found in registry")
             self._zones[zone_id] = replace(
                 self._zones[zone_id],
                 last_seen=timestamp,

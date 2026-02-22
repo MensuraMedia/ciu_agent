@@ -188,10 +188,7 @@ class StateClassifier:
             )
 
         # 4. Massive change — treat as page navigation.
-        if (
-            diff.changed_percent
-            >= self._settings.tier2_threshold_percent
-        ):
+        if diff.changed_percent >= self._settings.tier2_threshold_percent:
             should_wait, wait_ms = self._estimate_stability_wait(
                 ChangeType.PAGE_NAVIGATION,
             )
@@ -206,7 +203,8 @@ class StateClassifier:
 
         # 5. Moderate change — classify by region pattern (tier 1).
         change_type = self._classify_by_region_pattern(
-            diff, cursor_pos,
+            diff,
+            cursor_pos,
         )
         should_wait, wait_ms = self._estimate_stability_wait(
             change_type,
@@ -316,10 +314,7 @@ class StateClassifier:
         rx, ry, rw, rh = region
         cx, cy = cursor_pos
 
-        return (
-            rx - margin <= cx <= rx + rw + margin
-            and ry - margin <= cy <= ry + rh + margin
-        )
+        return rx - margin <= cx <= rx + rw + margin and ry - margin <= cy <= ry + rh + margin
 
     # ------------------------------------------------------------------
     # Region-pattern classification
@@ -353,9 +348,7 @@ class StateClassifier:
 
         # Aggregate bounding-box metrics.
         total_area = sum(w * h for _, _, w, h in regions)
-        all_near_cursor = all(
-            self._is_near_cursor(r, cursor_pos) for r in regions
-        )
+        all_near_cursor = all(self._is_near_cursor(r, cursor_pos) for r in regions)
 
         # --- Small near-cursor changes: hover or tooltip -----------
         if all_near_cursor and total_area <= _SMALL_REGION_AREA:
@@ -375,7 +368,9 @@ class StateClassifier:
                 and rw > 0
                 and rh / rw >= _MENU_MIN_ASPECT_RATIO
                 and self._is_near_cursor(
-                    region, cursor_pos, margin=100,
+                    region,
+                    cursor_pos,
+                    margin=100,
                 )
             ):
                 return ChangeType.MENU_OPENED
@@ -426,7 +421,7 @@ class StateClassifier:
 
         screen_cx = max_x / 2.0
         screen_cy = max_y / 2.0
-        diag = (max_x ** 2 + max_y ** 2) ** 0.5
+        diag = (max_x**2 + max_y**2) ** 0.5
         threshold = diag * _CENTRE_PROXIMITY_FRACTION
 
         for rx, ry, rw, rh in regions:
@@ -435,10 +430,7 @@ class StateClassifier:
                 continue
             region_cx = rx + rw / 2.0
             region_cy = ry + rh / 2.0
-            dist = (
-                (region_cx - screen_cx) ** 2
-                + (region_cy - screen_cy) ** 2
-            ) ** 0.5
+            dist = ((region_cx - screen_cx) ** 2 + (region_cy - screen_cy) ** 2) ** 0.5
             if dist <= threshold:
                 return True
 

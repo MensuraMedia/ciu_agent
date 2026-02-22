@@ -185,33 +185,44 @@ class Tier1Analyzer:
         # 1. Crop both frames to the region.
         current_crop = self._crop(current_frame, rx, ry, rw, rh)
         previous_crop = self._crop(
-            previous_frame, rx, ry, rw, rh,
+            previous_frame,
+            rx,
+            ry,
+            rw,
+            rh,
         )
 
         # 2. Identify which existing zones overlap this region.
         region_rect = Rectangle(
-            x=rx, y=ry, width=rw, height=rh,
+            x=rx,
+            y=ry,
+            width=rw,
+            height=rh,
         )
-        zones_in_region = [
-            z for z in existing_zones
-            if z.bounds.overlaps(region_rect)
-        ]
+        zones_in_region = [z for z in existing_zones if z.bounds.overlaps(region_rect)]
 
         # 3. Run each detection method.
         new_zones: list[Zone] = []
 
         text_zones = self.detect_text_regions(
-            current_crop, rx, ry,
+            current_crop,
+            rx,
+            ry,
         )
         new_zones.extend(text_zones)
 
         tooltip_zones = self.detect_tooltip(
-            current_crop, previous_crop, rx, ry,
+            current_crop,
+            previous_crop,
+            rx,
+            ry,
         )
         new_zones.extend(tooltip_zones)
 
         rect_zones = self.detect_rectangular_elements(
-            current_crop, rx, ry,
+            current_crop,
+            rx,
+            ry,
         )
         new_zones.extend(rect_zones)
 
@@ -224,21 +235,23 @@ class Tier1Analyzer:
         # 4. Detect removed zones: existing zones in the region
         #    whose bounding area is now uniform colour.
         removed_ids = self._detect_removed_zones(
-            current_crop, zones_in_region, rx, ry,
+            current_crop,
+            zones_in_region,
+            rx,
+            ry,
         )
 
         # 5. Filter new zones below the relaxed confidence floor.
         #    Tier 1 confidence is intentionally lower than Tier 2,
         #    so we apply half the configured minimum.
         relaxed_conf = self._settings.min_zone_confidence * 0.5
-        new_zones = [
-            z for z in new_zones
-            if z.confidence >= relaxed_conf
-        ]
+        new_zones = [z for z in new_zones if z.confidence >= relaxed_conf]
 
         # 6. Compute aggregate confidence.
         confidence = self._aggregate_confidence(
-            new_zones, hover_updates, removed_ids,
+            new_zones,
+            hover_updates,
+            removed_ids,
         )
 
         return RegionAnalysis(
@@ -280,7 +293,8 @@ class Tier1Analyzer:
 
         # Dilate horizontally to merge characters into text lines.
         kernel = cv2.getStructuringElement(
-            cv2.MORPH_RECT, _TEXT_DILATE_KERNEL,
+            cv2.MORPH_RECT,
+            _TEXT_DILATE_KERNEL,
         )
         dilated = cv2.dilate(edges, kernel, iterations=1)
 
@@ -306,29 +320,25 @@ class Tier1Analyzer:
                 continue
 
             # Large, wide regions may be text input fields.
-            zone_type = (
-                ZoneType.TEXT_FIELD
-                if bh > 20 and bw > 100
-                else ZoneType.STATIC
-            )
+            zone_type = ZoneType.TEXT_FIELD if bh > 20 and bw > 100 else ZoneType.STATIC
 
-            zone_id = (
-                f"t1_{offset_x + bx}_{offset_y + by}_{idx}"
+            zone_id = f"t1_{offset_x + bx}_{offset_y + by}_{idx}"
+            zones.append(
+                Zone(
+                    id=zone_id,
+                    bounds=Rectangle(
+                        x=offset_x + bx,
+                        y=offset_y + by,
+                        width=bw,
+                        height=bh,
+                    ),
+                    type=zone_type,
+                    label="",
+                    state=ZoneState.ENABLED,
+                    confidence=_CONFIDENCE_TEXT,
+                    last_seen=now,
+                )
             )
-            zones.append(Zone(
-                id=zone_id,
-                bounds=Rectangle(
-                    x=offset_x + bx,
-                    y=offset_y + by,
-                    width=bw,
-                    height=bh,
-                ),
-                type=zone_type,
-                label="",
-                state=ZoneState.ENABLED,
-                confidence=_CONFIDENCE_TEXT,
-                last_seen=now,
-            ))
 
         return zones
 
@@ -371,10 +381,12 @@ class Tier1Analyzer:
             return []
 
         cur_gray = cv2.cvtColor(
-            current_region, cv2.COLOR_BGR2GRAY,
+            current_region,
+            cv2.COLOR_BGR2GRAY,
         )
         prev_gray = cv2.cvtColor(
-            previous_region, cv2.COLOR_BGR2GRAY,
+            previous_region,
+            cv2.COLOR_BGR2GRAY,
         )
 
         rh, rw = cur_gray.shape[:2]
@@ -417,10 +429,12 @@ class Tier1Analyzer:
             delta = abs(cur_mean - prev_mean)
 
             if delta >= _HOVER_BRIGHTNESS_DELTA:
-                updates.append((
-                    zone.id,
-                    {"state": ZoneState.HOVERED},
-                ))
+                updates.append(
+                    (
+                        zone.id,
+                        {"state": ZoneState.HOVERED},
+                    )
+                )
 
         return updates
 
@@ -456,10 +470,12 @@ class Tier1Analyzer:
             return []
 
         cur_gray = cv2.cvtColor(
-            current_region, cv2.COLOR_BGR2GRAY,
+            current_region,
+            cv2.COLOR_BGR2GRAY,
         )
         prev_gray = cv2.cvtColor(
-            previous_region, cv2.COLOR_BGR2GRAY,
+            previous_region,
+            cv2.COLOR_BGR2GRAY,
         )
 
         diff = cv2.absdiff(cur_gray, prev_gray)
@@ -472,10 +488,13 @@ class Tier1Analyzer:
 
         # Clean up small specks with morphological opening.
         kernel = cv2.getStructuringElement(
-            cv2.MORPH_RECT, (5, 5),
+            cv2.MORPH_RECT,
+            (5, 5),
         )
         cleaned = cv2.morphologyEx(
-            thresh, cv2.MORPH_OPEN, kernel,
+            thresh,
+            cv2.MORPH_OPEN,
+            kernel,
         )
 
         contours, _ = cv2.findContours(
@@ -507,24 +526,23 @@ class Tier1Analyzer:
             if rectangularity < _MIN_RECTANGULARITY:
                 continue
 
-            zone_id = (
-                f"t1_{offset_x + bx}"
-                f"_{offset_y + by}_tt{idx}"
+            zone_id = f"t1_{offset_x + bx}_{offset_y + by}_tt{idx}"
+            zones.append(
+                Zone(
+                    id=zone_id,
+                    bounds=Rectangle(
+                        x=offset_x + bx,
+                        y=offset_y + by,
+                        width=bw,
+                        height=bh,
+                    ),
+                    type=ZoneType.STATIC,
+                    label="",
+                    state=ZoneState.ENABLED,
+                    confidence=_CONFIDENCE_TOOLTIP,
+                    last_seen=now,
+                )
             )
-            zones.append(Zone(
-                id=zone_id,
-                bounds=Rectangle(
-                    x=offset_x + bx,
-                    y=offset_y + by,
-                    width=bw,
-                    height=bh,
-                ),
-                type=ZoneType.STATIC,
-                label="",
-                state=ZoneState.ENABLED,
-                confidence=_CONFIDENCE_TOOLTIP,
-                last_seen=now,
-            ))
 
         return zones
 
@@ -565,10 +583,13 @@ class Tier1Analyzer:
 
         # Close small gaps in element borders.
         kernel = cv2.getStructuringElement(
-            cv2.MORPH_RECT, (3, 3),
+            cv2.MORPH_RECT,
+            (3, 3),
         )
         closed = cv2.morphologyEx(
-            binary, cv2.MORPH_CLOSE, kernel,
+            binary,
+            cv2.MORPH_CLOSE,
+            kernel,
         )
 
         contours, _ = cv2.findContours(
@@ -592,16 +613,14 @@ class Tier1Analyzer:
             if perimeter < 1:
                 continue
             approx = cv2.approxPolyDP(
-                contour, 0.02 * perimeter, closed=True,
+                contour,
+                0.02 * perimeter,
+                closed=True,
             )
             vertex_count = len(approx)
 
             # Keep only roughly rectangular shapes.
-            if not (
-                _RECT_MIN_VERTICES
-                <= vertex_count
-                <= _RECT_MAX_VERTICES
-            ):
+            if not (_RECT_MIN_VERTICES <= vertex_count <= _RECT_MAX_VERTICES):
                 continue
 
             # Rectangularity check.
@@ -613,24 +632,23 @@ class Tier1Analyzer:
             if rectangularity < _MIN_RECTANGULARITY:
                 continue
 
-            zone_id = (
-                f"t1_{offset_x + bx}"
-                f"_{offset_y + by}_r{idx}"
+            zone_id = f"t1_{offset_x + bx}_{offset_y + by}_r{idx}"
+            zones.append(
+                Zone(
+                    id=zone_id,
+                    bounds=Rectangle(
+                        x=offset_x + bx,
+                        y=offset_y + by,
+                        width=bw,
+                        height=bh,
+                    ),
+                    type=ZoneType.UNKNOWN,
+                    label="",
+                    state=ZoneState.ENABLED,
+                    confidence=_CONFIDENCE_RECT,
+                    last_seen=now,
+                )
             )
-            zones.append(Zone(
-                id=zone_id,
-                bounds=Rectangle(
-                    x=offset_x + bx,
-                    y=offset_y + by,
-                    width=bw,
-                    height=bh,
-                ),
-                type=ZoneType.UNKNOWN,
-                label="",
-                state=ZoneState.ENABLED,
-                confidence=_CONFIDENCE_RECT,
-                last_seen=now,
-            ))
 
         return zones
 
@@ -745,12 +763,8 @@ class Tier1Analyzer:
             Aggregate confidence in [0.0, 1.0].
         """
         scores: list[float] = [z.confidence for z in new_zones]
-        scores.extend(
-            _CONFIDENCE_HOVER for _ in hover_updates
-        )
-        scores.extend(
-            _CONFIDENCE_REMOVED for _ in removed_ids
-        )
+        scores.extend(_CONFIDENCE_HOVER for _ in hover_updates)
+        scores.extend(_CONFIDENCE_REMOVED for _ in removed_ids)
 
         if not scores:
             return 0.0
