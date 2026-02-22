@@ -1,1 +1,1 @@
-"""Data models: zones, events, and actions."""
+"""Data models: zones, events, actions, and task planning."""
