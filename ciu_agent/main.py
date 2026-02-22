@@ -21,8 +21,10 @@ from __future__ import annotations
 
 import argparse
 import logging
+import math
 import os
 import sys
+import time
 from dataclasses import dataclass
 
 from ciu_agent.config.settings import Settings
@@ -107,16 +109,54 @@ class CIUAgent:
     # Public API
     # ------------------------------------------------------------------
 
+    def _signal_control(self) -> None:
+        """Move the cursor in a circle at screen center to signal control.
+
+        The cursor is moved to the center of the screen, then draws a
+        small circle (radius 80px, 2 loops) so the user can see that
+        the CIU Agent has taken control of the mouse.  The cursor is
+        returned to the center when done.
+
+        Skipped when ``step_delay_seconds`` is 0 (test environments).
+        """
+        if self.settings.step_delay_seconds == 0:
+            return
+        w, h = self.platform.get_screen_size()
+        cx, cy = w // 2, h // 2
+        radius = 80
+        steps_per_loop = 50
+        loops = 2
+
+        # Move to center first.
+        self.platform.move_cursor(cx, cy)
+        time.sleep(0.15)
+
+        for _ in range(loops):
+            for i in range(steps_per_loop + 1):
+                angle = 2.0 * math.pi * i / steps_per_loop
+                x = int(cx + radius * math.cos(angle))
+                y = int(cy + radius * math.sin(angle))
+                self.platform.move_cursor(x, y)
+                time.sleep(0.015)
+
+        # Return to center.
+        self.platform.move_cursor(cx, cy)
+        logger.info("Control signal: cursor circle at screen center")
+
     def startup(self) -> None:
         """Perform initial capture and Tier 2 analysis to populate zones.
 
-        Captures the first frame, sends it directly to the Tier 2
+        First signals control by drawing a cursor circle at screen
+        center, then captures the first frame, sends it to the Tier 2
         analyser (bypassing the StateClassifier's stability-wait
         logic), and replaces the zone registry with the API response.
 
         After this method returns the zone registry is populated and
         the Director is ready to execute tasks.
         """
+        # 0. Signal that the agent has control of the cursor.
+        self._signal_control()
+
         logger.info("Starting initial capture and Tier 2 analysis")
 
         # 1. Capture initial frame.
