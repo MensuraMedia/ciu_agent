@@ -1,83 +1,82 @@
 {
-  "phase": "Phase 3: Brush",
+  "phase": "Phase 4: Director",
   "status": "complete",
   "completed": "2026-02-22",
-  "previous_phase": "Phase 2: Canvas (complete 2026-02-22)",
+  "previous_phase": "Phase 3: Brush (complete 2026-02-22)",
   "tasks": [
     {
-      "id": "P3-001",
-      "title": "Implement zone tracker with spatial event emission",
-      "agent": "brush-specialist:zone-tracker",
+      "id": "P4-001",
+      "title": "Implement TaskPlanner (Claude API task decomposition)",
+      "agent": "director-specialist:task-planner",
       "status": "complete",
       "blocked_by": [],
-      "blocks": ["P3-004"],
+      "blocks": ["P4-004"],
       "acceptance": [
-        "Track cursor position against zone registry",
-        "Emit zone_enter, zone_exit, zone_hover events",
-        "Hover detection with configurable threshold",
-        "Event history for recent events",
-        "Tests pass"
+        "Build structured prompt from task + zone registry state",
+        "Parse Claude API JSON response into TaskPlan with steps",
+        "Handle API errors with retry/backoff",
+        "TaskStep dataclass with zone_id, action_type, parameters, expected_change",
+        "Tests pass with mocked API"
       ]
     },
     {
-      "id": "P3-002",
-      "title": "Implement motion trajectory planner",
-      "agent": "brush-specialist:motion-planner",
+      "id": "P4-002",
+      "title": "Implement StepExecutor (step execution via BrushController)",
+      "agent": "director-specialist:step-executor",
       "status": "complete",
       "blocked_by": [],
-      "blocks": ["P3-004"],
+      "blocks": ["P4-004"],
       "acceptance": [
-        "Plan direct trajectories (straight line with interpolation)",
-        "Plan safe trajectories (avoid specified zones)",
-        "Plan exploratory trajectories (sweep patterns)",
-        "Configurable speed via settings",
+        "Execute a single TaskStep via BrushController",
+        "Verify expected canvas change after action",
+        "Return StepResult with success/failure and events",
+        "Timeout detection for expected changes",
         "Tests pass"
       ]
     },
     {
-      "id": "P3-003",
-      "title": "Implement action executor with zone verification",
-      "agent": "brush-specialist:action-executor",
+      "id": "P4-003",
+      "title": "Implement ErrorClassifier (error classification + recovery)",
+      "agent": "director-specialist:error-classifier",
       "status": "complete",
       "blocked_by": [],
-      "blocks": ["P3-004"],
+      "blocks": ["P4-004"],
       "acceptance": [
-        "Execute click, double_click, type_text, key_press, scroll, drag, move",
-        "Verify cursor is in target zone before acting",
-        "Emit zone_click and zone_type events on success",
-        "Return ActionStatus.FAILED with reason on failure",
+        "Classify errors: zone_not_found, wrong_zone, timeout, brush_lost, action_failed",
+        "Determine recovery strategy per error type",
+        "RecoveryAction enum: retry, replan, reanalyze, abort",
         "Tests pass"
       ]
     },
     {
-      "id": "P3-004",
-      "title": "Implement BrushController orchestrator",
-      "agent": "brush-specialist",
+      "id": "P4-004",
+      "title": "Implement Director orchestrator",
+      "agent": "director-specialist",
       "status": "complete",
-      "blocked_by": ["P3-001", "P3-002", "P3-003"],
-      "blocks": ["P3-005"],
+      "blocked_by": ["P4-001", "P4-002", "P4-003"],
+      "blocks": ["P4-005"],
       "acceptance": [
-        "Wire zone tracker, motion planner, action executor together",
-        "navigate_to_zone(): plan trajectory + execute motion + verify arrival",
-        "execute_action(): navigate + perform action + verify result",
-        "Brush-lost detection and reporting",
-        "Convenience methods: get_current_zone, get_event_history",
+        "Wire planner, executor, error classifier together",
+        "execute_task(): decompose + execute steps + handle errors",
+        "Re-planning on recoverable errors",
+        "Task completion verification",
+        "API call budget tracking",
         "Tests pass"
       ]
     },
     {
-      "id": "P3-005",
-      "title": "Full Phase 3 test suite and validation",
+      "id": "P4-005",
+      "title": "Full Phase 4 test suite and validation",
       "agent": "test-engineer",
       "status": "complete",
-      "blocked_by": ["P3-004"],
+      "blocked_by": ["P4-004"],
       "acceptance": [
         "Unit tests for all modules",
-        "Integration test for brush controller pipeline",
+        "Integration test for director pipeline",
         "All tests pass",
         "Lint clean"
       ],
-      "result": "706 tests passing in 1.47s, lint clean"
+      "result": "858 tests passing in 1.75s, lint clean"
     }
   ]
 }
