@@ -58,101 +58,114 @@ _API_VERSION: str = "2023-06-01"
 # System prompt that instructs Claude to return a step-by-step plan.
 # ------------------------------------------------------------------
 _SYSTEM_PROMPT: str = (
-    "You are a GUI task execution planner for a desktop automation agent. "
-    "Given a task description, OS information, and a list of available UI "
-    "zones currently visible on screen, produce a step-by-step plan to "
-    "accomplish the task.\n"
+    "You are a GUI task execution planner for a desktop automation agent "
+    "called CIU (Complete Interface Usage). The agent controls the mouse "
+    "cursor and keyboard to interact with a real desktop.\n"
     "\n"
-    "Return ONLY a JSON array. Each element is an object with:\n"
-    '  "step_number": int\n'
-    '  "zone_id": string — the ID of the zone to interact with, '
-    'or "__global__" for OS-level keyboard/system actions\n'
-    '  "zone_label": string — the label for debugging\n'
-    '  "action_type": string — one of: click, double_click, '
-    "type_text, key_press, scroll\n"
-    '  "parameters": object — e.g. {"text": "hello"} or '
-    '{"key": "enter"} or {"button": "left"}\n'
-    '  "expected_change": string — what should change on screen '
-    "after this step\n"
-    '  "description": string — human-readable description of what '
-    "this step does\n"
+    "CRITICAL: The agent has TWO execution modes. You MUST use both:\n"
+    "\n"
+    "1. VISUAL MODE — Use a zone_id from the zone list. The agent will "
+    "physically move the mouse cursor to the zone's center and perform "
+    "the action (click, type, etc.). The user sees the cursor move.\n"
+    "\n"
+    '2. COMMAND MODE — Use zone_id "__global__" for keyboard shortcuts '
+    "that have no on-screen target (Win+R, Ctrl+S, Enter, etc.).\n"
+    "\n"
+    "=== MANDATORY RULES ===\n"
+    "RULE 1: If a zone exists in the zone list that matches the element "
+    "you want to interact with, you MUST use that zone's id. Do NOT use "
+    '"__global__" when a matching zone is available.\n'
+    "\n"
+    "RULE 2: For EVERY click action, use the zone_id of the target "
+    "element. The agent needs zone_id to navigate the cursor there.\n"
+    "\n"
+    "RULE 3: For text input into a visible text field, FIRST click the "
+    "text field zone (visual mode), THEN type_text into that same zone "
+    'or use "__global__" type_text if the field is now focused.\n'
+    "\n"
+    'RULE 4: Only use "__global__" for:\n'
+    "  - Keyboard shortcuts (Ctrl+S, Alt+F4, Win+R, Enter, Tab, etc.)\n"
+    "  - Typing text when the target field is already focused and has "
+    "no zone_id\n"
+    "  - OS-level actions with no visible UI target\n"
+    "\n"
+    "RULE 5: After steps that change the screen significantly (opening "
+    "an app, opening a dialog), the agent will re-capture the screen "
+    "and detect NEW zones. Your plan should include a PLACEHOLDER step "
+    'with zone_id "__replan__" and action_type "replan" to signal that '
+    "the agent should re-plan the remaining steps with the new zones.\n"
     "\n"
     "=== METHODOLOGY ===\n"
-    "Follow this sequential methodology when planning:\n"
+    "1. EXAMINE: Review all zones to understand the current screen.\n"
+    "2. IDENTIFY: Determine OS and visible applications from zone labels.\n"
+    "3. LOCATE LAUNCHER: Find Start menu / taskbar / dock zones.\n"
+    "4. ACCESS LAUNCHER: Click the Start/Search zone (visual mode) or "
+    'use "__global__" key_press if no launcher zone exists.\n'
+    "5. FIND APP: Type to search, scroll, or click through menus.\n"
+    "6. OPEN APP: Click the app entry, then add a replan step.\n"
+    "7. OPERATE: Use zone_ids for buttons, menus, text fields.\n"
+    "8. COMPLETE: Save, confirm, or close as needed.\n"
     "\n"
-    "1. EXAMINE THE SCREEN: Look at all available zones to understand "
-    "what is currently visible (desktop, application, dialog, etc.).\n"
+    "=== OUTPUT FORMAT ===\n"
+    "Return ONLY a JSON array. Each element:\n"
+    "{\n"
+    '  "step_number": int,\n'
+    '  "zone_id": "zone_abc123" or "__global__" or "__replan__",\n'
+    '  "zone_label": "human label",\n'
+    '  "action_type": "click"|"double_click"|"type_text"|"key_press"'
+    '|"scroll"|"replan",\n'
+    '  "parameters": {"text": "..."} or {"key": "..."} or {},\n'
+    '  "expected_change": "description of screen change",\n'
+    '  "description": "what this step does"\n'
+    "}\n"
     "\n"
-    "2. IDENTIFY THE ENVIRONMENT: Determine the OS type from the zone "
-    "list (Windows taskbar, macOS dock, Linux panel). Use this to "
-    "choose the correct keyboard shortcuts and UI conventions.\n"
+    "=== EXAMPLES ===\n"
+    "Example 1 — Clicking a visible Start button:\n"
+    '  {"step_number": 1, "zone_id": "zone_start_btn", '
+    '"zone_label": "Start", "action_type": "click", '
+    '"parameters": {}, "expected_change": "Start menu opens", '
+    '"description": "Click the Start button to open the Start menu"}\n'
     "\n"
-    "3. LOCATE THE SYSTEM MENU / LAUNCHER: Identify how to access the "
-    "OS program launcher:\n"
-    "  - Windows: taskbar search, Start menu, or Win+R / Win+S\n"
-    "  - macOS: Spotlight (Cmd+Space) or Launchpad\n"
-    "  - Linux: application menu or Alt+F2\n"
+    "Example 2 — Typing into a visible search box:\n"
+    '  {"step_number": 2, "zone_id": "zone_search_box", '
+    '"zone_label": "Search box", "action_type": "click", '
+    '"parameters": {}, "expected_change": "Search box is focused", '
+    '"description": "Click the search box to focus it"}\n'
+    '  {"step_number": 3, "zone_id": "__global__", '
+    '"zone_label": "keyboard", "action_type": "type_text", '
+    '"parameters": {"text": "notepad"}, '
+    '"expected_change": "Search results appear", '
+    '"description": "Type notepad to search for it"}\n'
     "\n"
-    "4. ACCESS THE PROGRAM LAUNCHER: If the target application is not "
-    "already open, use the appropriate method to reach it:\n"
-    "  - Click the Start/Search zone if visible in the zone list\n"
-    "  - Use __global__ key_press for keyboard shortcuts\n"
+    "Example 3 — Keyboard shortcut (no zone needed):\n"
+    '  {"step_number": 4, "zone_id": "__global__", '
+    '"zone_label": "keyboard", "action_type": "key_press", '
+    '"parameters": {"key": "ctrl+s"}, '
+    '"expected_change": "Save dialog appears", '
+    '"description": "Press Ctrl+S to save"}\n'
     "\n"
-    "5. FIND AND OPEN THE APPLICATION: Search for or navigate to the "
-    "desired application. Type the app name, scroll if needed, then "
-    "click to open it or press Enter.\n"
-    "\n"
-    "6. WAIT FOR APPLICATION: After launching, the screen will change. "
-    "Include an expected_change describing the new application window.\n"
-    "\n"
-    "7. OPERATE THE APPLICATION: Interact with the application's menus, "
-    "buttons, text fields, and controls in sequential order to achieve "
-    "the task. Use zone IDs when the target element is in the zone list. "
-    "Use __global__ for keyboard shortcuts within the app.\n"
-    "\n"
-    "8. COMPLETE THE OPERATION: Perform save, confirm, or close actions "
-    "as needed to finalise the task.\n"
-    "\n"
-    "=== EXECUTION MODES ===\n"
-    "The agent supports TWO execution modes. Use BOTH as appropriate:\n"
-    "\n"
-    "VISUAL MODE (preferred when zones are available):\n"
-    "- Use a zone_id from the provided zone list to click, type, or "
-    "interact with a visible UI element.\n"
-    "- The agent will physically move the mouse cursor to the zone and "
-    "perform the action. This provides visual feedback to the user.\n"
-    "- ALWAYS prefer visual mode when a matching zone is visible.\n"
-    "\n"
-    "COMMAND MODE (when no zone is available):\n"
-    '- Use zone_id "__global__" with action_type "key_press" or '
-    '"type_text" for keyboard shortcuts and text entry.\n'
-    "- Use this for OS-level shortcuts, launching apps, or when the "
-    "target element has not yet appeared on screen.\n"
+    "Example 4 — Replan after launching an app:\n"
+    '  {"step_number": 5, "zone_id": "__replan__", '
+    '"zone_label": "replan", "action_type": "replan", '
+    '"parameters": {}, '
+    '"expected_change": "New application zones detected", '
+    '"description": "Re-capture screen and plan remaining steps '
+    'with new zones"}\n'
     "\n"
     "=== GUIDELINES ===\n"
-    "- PREFER VISUAL MODE: If a zone exists for the target element, "
-    "use its zone_id so the cursor physically navigates to it.\n"
-    "- Use __global__ only when no matching zone is visible.\n"
-    "- Common __global__ keyboard shortcuts:\n"
-    '  Windows: {"key": "win+r"} (Run dialog), {"key": "win+s"} '
-    "(Search), "
+    "- Keep plans short. Only plan steps up to the next major screen "
+    'change, then add a "__replan__" step.\n'
+    "- Common keyboard shortcuts:\n"
+    '  Windows: {"key": "win"} (Start), {"key": "win+r"} (Run), '
     '{"key": "ctrl+s"} (Save), {"key": "alt+f4"} (Close), '
     '{"key": "enter"} (Confirm)\n'
     '  macOS: {"key": "cmd+space"} (Spotlight), {"key": "cmd+s"} '
     "(Save)\n"
-    "- For text input: click the target text field zone first (visual "
-    "mode), then use type_text on that zone. Only use __global__ "
-    "type_text when the field is already focused and no zone exists.\n"
-    "- Include expected_change to help verify each step succeeded. The "
-    "agent will re-capture the screen and re-detect zones after steps "
-    "with significant UI changes.\n"
-    "- Keep plans under 20 steps.\n"
-    "- IMPORTANT: If the task requires opening an app that is NOT "
-    "currently visible, you MUST include steps to find and launch it "
-    "first. Do not assume it is already open.\n"
-    "- After launching an application, subsequent steps will see NEW "
-    "zones from the opened app. Plan to interact with those new zones "
-    "using visual mode.\n"
+    "- Use real file paths, not environment variables like "
+    "%USERPROFILE%. For Windows use C:\\Users\\<username>\\Documents.\n"
+    "- IMPORTANT: You will be called MULTIPLE times as the screen "
+    "changes. Each call provides fresh zones. Plan only for what you "
+    "can see NOW.\n"
 )
 
 
@@ -226,7 +239,12 @@ class TaskPlanner:
 
     # -- Prompt construction ----------------------------------------
 
-    def build_prompt(self, task: str, zones: list[Zone]) -> dict:
+    def build_prompt(
+        self,
+        task: str,
+        zones: list[Zone],
+        completed_steps: list[str] | None = None,
+    ) -> dict:
         """Build the Claude Messages API payload for task planning.
 
         Returns a ``dict`` ready to be serialised to JSON and sent to
@@ -235,6 +253,8 @@ class TaskPlanner:
         Args:
             task: Natural-language description of the task.
             zones: Currently available UI zones on screen.
+            completed_steps: Optional list of step descriptions that
+                have already been completed (for adaptive replanning).
 
         Returns:
             A dictionary matching the Anthropic Messages API schema.
@@ -246,17 +266,45 @@ class TaskPlanner:
             else ""
         )
 
+        progress_text = ""
+        if completed_steps:
+            progress_text = (
+                "\n=== ALREADY COMPLETED (DO NOT REPEAT) ===\n"
+                "The following steps have ALREADY been executed "
+                "successfully. Do NOT include these in your plan:\n"
+                + "\n".join(
+                    f"  DONE {i+1}. {desc}"
+                    for i, desc in enumerate(completed_steps)
+                )
+                + "\n\nIMPORTANT: Plan ONLY the remaining steps needed "
+                "to finish the task. The application is already open "
+                "and ready. Do NOT reopen it.\n"
+            )
+
+        clickable_count = sum(
+            1 for z in zones
+            if z.type.value in (
+                "button", "menu", "text_field", "link",
+                "icon", "tab", "checkbox", "radio",
+            )
+        )
+
         user_text = (
             f"Task: {task}\n"
             "\n"
             f"{os_line}"
-            f"Number of zones detected: {len(zones)}\n"
+            f"Zones detected: {len(zones)} "
+            f"({clickable_count} clickable)\n"
+            f"{progress_text}"
             "\n"
-            "Available zones on screen:\n"
+            "AVAILABLE ZONES (use these zone_ids for visual mode):\n"
             f"{zone_summary}\n"
             "\n"
-            "Following the methodology in the system prompt, produce "
-            "a step-by-step plan to accomplish this task."
+            "REMINDER: You MUST use zone_id from the list above for "
+            "any element you want to click or interact with. Only use "
+            '"__global__" for keyboard shortcuts with no visible target.'
+            "\n\n"
+            "Plan the next steps to accomplish the task."
         )
 
         payload: dict = {
@@ -337,7 +385,12 @@ class TaskPlanner:
 
     # -- Synchronous planning ---------------------------------------
 
-    def plan(self, task: str, zones: list[Zone]) -> TaskPlan:
+    def plan(
+        self,
+        task: str,
+        zones: list[Zone],
+        completed_steps: list[str] | None = None,
+    ) -> TaskPlan:
         """Decompose a task into an ordered list of zone interactions.
 
         This is a synchronous (blocking) method.  It builds the prompt,
@@ -348,6 +401,8 @@ class TaskPlanner:
             task: Natural-language description of the task to
                 accomplish.
             zones: Currently available UI zones on screen.
+            completed_steps: Optional list of already-completed step
+                descriptions for adaptive replanning.
 
         Returns:
             A ``TaskPlan`` describing the steps.  On success the
@@ -362,7 +417,7 @@ class TaskPlanner:
                 error="No API key configured.",
             )
 
-        payload = self.build_prompt(task, zones)
+        payload = self.build_prompt(task, zones, completed_steps)
         headers = self._build_headers()
         timeout = httpx.Timeout(
             self._settings.api_timeout_text_seconds,

@@ -376,10 +376,19 @@ def build_agent(
             context="Re-analysis after UI state change.",
         )
         resp = tier2.analyze_sync(req)
-        if resp.success:
+        if resp.success and resp.zones:
             registry.replace_all(resp.zones)
             return len(resp.zones)
-        logger.warning("Re-capture Tier 2 failed: %s", resp.error)
+        if resp.success and not resp.zones:
+            logger.warning(
+                "Re-capture returned 0 zones (parse failure?) "
+                "— keeping %d existing zones",
+                registry.count,
+            )
+        else:
+            logger.warning(
+                "Re-capture Tier 2 failed: %s", resp.error,
+            )
         return registry.count
 
     # 16. Director

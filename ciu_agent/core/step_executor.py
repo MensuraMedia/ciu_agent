@@ -148,7 +148,19 @@ class StepExecutor:
         Returns:
             A ``StepResult`` describing the outcome.
         """
-        # 1. Map action type string -> ActionType enum.
+        # 1. Handle __replan__ step (Director handles this, not executor).
+        if step.zone_id == "__replan__":
+            return StepResult(
+                step=step,
+                success=True,
+                action_result=None,
+                events=[],
+                error="",
+                error_type="",
+                timestamp=timestamp,
+            )
+
+        # 2. Map action type string -> ActionType enum.
         action_type = self._map_action_type(step.action_type)
         if action_type is None:
             logger.warning(
@@ -166,11 +178,11 @@ class StepExecutor:
                 timestamp=timestamp,
             )
 
-        # 2. Handle __global__ zone (OS-level actions, no zone needed).
+        # 3. Handle __global__ zone (OS-level actions, no zone needed).
         if step.zone_id == "__global__":
             return self._execute_global(step, action_type, timestamp)
 
-        # 3. Verify target zone exists.
+        # 4. Verify target zone exists.
         if not self._registry.contains(step.zone_id):
             logger.warning(
                 "step %d: zone %r not found in registry",

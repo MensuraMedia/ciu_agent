@@ -365,7 +365,113 @@ class TestStepExecutor_SuccessfulExecution:
 
 
 # ------------------------------------------------------------------
-# 2. Action Type Mapping
+# 2. __replan__ Step Handling
+# ------------------------------------------------------------------
+
+
+class TestStepExecutor_ReplanStep:
+    """Tests for __replan__ steps that bypass normal execution."""
+
+    def test_execute_replan_step_returns_success(self) -> None:
+        """__replan__ steps return success without executing."""
+        executor, *_ = _build_executor(cursor_pos=(200, 150), zones=[])
+
+        step = _make_step(
+            step_number=1,
+            zone_id="__replan__",
+            zone_label="replan",
+            action_type="replan",
+            parameters={},
+            expected_change="Screen re-captured",
+            description="Re-plan after UI change",
+        )
+        result = executor.execute(step, timestamp=1000.0)
+
+        assert result.success is True
+        assert result.action_result is None
+        assert result.error == ""
+        assert result.error_type == ""
+
+    def test_replan_step_does_not_touch_platform(self) -> None:
+        """__replan__ steps must not invoke any platform methods."""
+        executor, _, platform, _ = _build_executor(
+            cursor_pos=(200, 150), zones=[]
+        )
+
+        step = _make_step(
+            zone_id="__replan__",
+            action_type="replan",
+        )
+        result = executor.execute(step, timestamp=1000.0)
+
+        assert result.success is True
+        assert len(platform.calls) == 0
+
+    def test_replan_step_does_not_require_zone_in_registry(self) -> None:
+        """__replan__ steps succeed even with an empty zone registry."""
+        executor, *_ = _build_executor(
+            cursor_pos=(200, 150), zones=[]
+        )
+
+        step = _make_step(
+            zone_id="__replan__",
+            action_type="replan",
+        )
+        result = executor.execute(step, timestamp=1000.0)
+
+        assert result.success is True
+
+    def test_replan_step_preserves_timestamp(self) -> None:
+        """__replan__ StepResult carries the correct timestamp."""
+        executor, *_ = _build_executor(
+            cursor_pos=(200, 150), zones=[]
+        )
+
+        step = _make_step(
+            zone_id="__replan__",
+            action_type="replan",
+        )
+        result = executor.execute(step, timestamp=555.5)
+
+        assert result.timestamp == 555.5
+
+    def test_replan_step_preserves_step_reference(self) -> None:
+        """__replan__ StepResult.step is the same TaskStep passed in."""
+        executor, *_ = _build_executor(
+            cursor_pos=(200, 150), zones=[]
+        )
+
+        step = _make_step(
+            step_number=3,
+            zone_id="__replan__",
+            zone_label="replan",
+            action_type="replan",
+            parameters={},
+            expected_change="Screen re-captured",
+            description="Re-plan after UI change",
+        )
+        result = executor.execute(step, timestamp=1000.0)
+
+        assert result.step is step
+        assert result.step.step_number == 3
+
+    def test_replan_step_returns_empty_events_list(self) -> None:
+        """__replan__ steps produce no spatial events."""
+        executor, *_ = _build_executor(
+            cursor_pos=(200, 150), zones=[]
+        )
+
+        step = _make_step(
+            zone_id="__replan__",
+            action_type="replan",
+        )
+        result = executor.execute(step, timestamp=1000.0)
+
+        assert result.events == []
+
+
+# ------------------------------------------------------------------
+# 3. Action Type Mapping
 # ------------------------------------------------------------------
 
 
@@ -499,7 +605,7 @@ class TestStepExecutor_ActionTypeMapping:
 
 
 # ------------------------------------------------------------------
-# 3. Zone Not Found
+# 4. Zone Not Found
 # ------------------------------------------------------------------
 
 
@@ -567,7 +673,7 @@ class TestStepExecutor_ZoneNotFound:
 
 
 # ------------------------------------------------------------------
-# 4. Navigation Failure
+# 5. Navigation Failure
 # ------------------------------------------------------------------
 
 
@@ -650,7 +756,7 @@ class TestStepExecutor_NavigationFailure:
 
 
 # ------------------------------------------------------------------
-# 5. Action Failure
+# 6. Action Failure
 # ------------------------------------------------------------------
 
 
@@ -727,7 +833,7 @@ class TestStepExecutor_ActionFailure:
 
 
 # ------------------------------------------------------------------
-# 6. Edge Cases
+# 7. Edge Cases
 # ------------------------------------------------------------------
 
 

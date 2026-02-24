@@ -60,8 +60,8 @@ class TestGetDefaultSettings:
         assert get_default_settings().motion_speed_pixels_per_sec == 1500.0
 
     def test_api_timeout_vision_seconds_default(self) -> None:
-        """Default api_timeout_vision_seconds is 30.0."""
-        assert get_default_settings().api_timeout_vision_seconds == 30.0
+        """Default api_timeout_vision_seconds is 60.0."""
+        assert get_default_settings().api_timeout_vision_seconds == 60.0
 
     def test_api_timeout_text_seconds_default(self) -> None:
         """Default api_timeout_text_seconds is 30.0."""

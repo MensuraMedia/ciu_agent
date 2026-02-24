@@ -9,9 +9,15 @@ real ErrorClassifier and real ZoneRegistry.
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 
 from ciu_agent.config.settings import Settings
-from ciu_agent.core.director import _MAX_API_CALLS, Director, TaskResult
+from ciu_agent.core.director import (
+    _MAX_API_CALLS,
+    _MAX_REPLANS,
+    Director,
+    TaskResult,
+)
 from ciu_agent.core.error_classifier import ErrorClassifier
 from ciu_agent.core.step_executor import StepResult
 from ciu_agent.core.zone_registry import ZoneRegistry
@@ -27,14 +33,26 @@ class MockPlanner:
     """Test double for TaskPlanner.
 
     Returns plans from a pre-loaded list, in order.  When the list
-    is exhausted, returns a failure plan.
+    is exhausted, returns a failure plan.  Captures ``completed_steps``
+    arguments for assertion in tests.
     """
 
     def __init__(self) -> None:
         self.plans: list[TaskPlan] = []
         self._call_index: int = 0
+        self.completed_steps_history: list[list[str] | None] = []
 
-    def plan(self, task: str, zones: list[Zone]) -> TaskPlan:
+    def plan(
+        self,
+        task: str,
+        zones: list[Zone],
+        completed_steps: list[str] | None = None,
+    ) -> TaskPlan:
+        # Store a snapshot (copy) so later mutations don't affect it.
+        self.completed_steps_history.append(
+            list(completed_steps) if completed_steps is not None
+            else None
+        )
         if self._call_index < len(self.plans):
             result = self.plans[self._call_index]
             self._call_index += 1
@@ -162,6 +180,7 @@ def _build_director(
     executor: MockStepExecutor | None = None,
     registry: ZoneRegistry | None = None,
     canvas_mapper: object | None = None,
+    recapture_fn: Callable[[], int] | None = None,
 ) -> tuple[Director, MockPlanner, MockStepExecutor, ZoneRegistry]:
     """Build a Director with real ErrorClassifier and optional overrides."""
     settings = Settings(step_delay_seconds=0.0)
@@ -175,6 +194,7 @@ def _build_director(
         error_classifier=classifier,
         registry=reg,
         canvas_mapper=canvas_mapper,
+        recapture_fn=recapture_fn,
         settings=settings,
     )
     return director, pl, ex, reg
@@ -501,23 +521,24 @@ class TestStepFailuresAndRecovery:
         assert result.plans_used == 3
 
     def test_max_replans_exceeded_aborts(self) -> None:
-        """Exceeding _MAX_REPLANS (3) aborts the task.
+        """Exceeding _MAX_REPLANS aborts the task.
 
         Uses ``timeout`` errors so each step exhausts retries and
         then escalates to REPLAN through _handle_step_failure.  After
-        4 replans (replan_count > _MAX_REPLANS=3), the Director
-        aborts with "Maximum replan attempts exceeded".
+        replan_count exceeds ``_MAX_REPLANS`` (currently 5), the
+        Director aborts with "Maximum replan attempts exceeded".
+
+        replan_count goes 0->1->2->3->4->5->6; 6 > 5 triggers abort.
+        We need the initial plan + 6 replan plans = 7 plans total,
+        but the 7th is never created because the limit check fires.
+        So we need 6 plans and 6*3 = 18 executor calls (timeout).
         """
         director, planner, executor, _reg = _build_director()
 
-        # Need initial plan + enough replans to exceed the limit.
+        # Need initial plan + enough replans to exceed _MAX_REPLANS.
         # Each failed step consumes 3 executor calls (timeout retries
         # at attempt 0,1 get RETRY; attempt 2 gets REPLAN and exits).
-        # replan_count goes 0->1->2->3->4; 4 > 3 triggers abort.
-        # That is 5 step failures = 5 plans, but the 5th plan is
-        # never created because the limit check fires first.
-        # So we need 4 plans and 4*3 = 12 executor calls.
-        for i in range(5):
+        for i in range(_MAX_REPLANS + 2):
             s = _make_step(
                 step_number=1, description=f"Step {i}"
             )
@@ -887,3 +908,506 @@ class TestEdgeCases:
 
         text = repr(director)
         assert "api_calls=7" in text
+
+
+# ===================================================================
+# 7. Adaptive Replanning (__replan__ steps)
+# ===================================================================
+
+
+def _make_replan_step(step_number: int = 1) -> TaskStep:
+    """Create a __replan__ sentinel step for testing."""
+    return TaskStep(
+        step_number=step_number,
+        zone_id="__replan__",
+        zone_label="Replan",
+        action_type="replan",
+        parameters={},
+        expected_change="Screen re-captured and plan updated",
+        description="Re-evaluate the screen and create new plan",
+    )
+
+
+class TestAdaptiveReplanning:
+    """Tests for the adaptive replanning feature.
+
+    The Director supports ``__replan__`` sentinel steps.  When
+    encountered, the Director re-captures the screen, creates a new
+    plan with ``completed_steps`` context, and continues execution
+    from step 0 of the new plan.
+    """
+
+    def test_replan_step_triggers_new_plan(self) -> None:
+        """A __replan__ step causes the Director to create a new plan.
+
+        Plan 1: [step_a, __replan__].  step_a succeeds, then the
+        replan step triggers a new plan.  Plan 2: [step_b], which
+        succeeds.  Overall task should succeed with plans_used == 2.
+        """
+        director, planner, executor, _reg = _build_director()
+
+        step_a = _make_step(step_number=1, description="Click File")
+        replan = _make_replan_step(step_number=2)
+        step_b = _make_step(step_number=1, description="Click Save")
+
+        planner.plans = [
+            _make_plan(steps=[step_a, replan]),
+            _make_plan(steps=[step_b]),
+        ]
+        executor.results = [
+            _make_success_result(step_a),
+            _make_success_result(step_b),
+        ]
+
+        result = director.execute_task("File then save")
+
+        assert result.success is True
+        assert result.plans_used == 2
+        assert result.steps_completed == 2
+
+    def test_replan_step_calls_recapture_fn(self) -> None:
+        """A __replan__ step invokes the recapture_fn callback.
+
+        The Director should call ``_do_recapture()`` which calls the
+        injected ``recapture_fn``.  The callback should be invoked
+        exactly once per __replan__ step.
+        """
+        recapture_calls: list[int] = []
+
+        def mock_recapture() -> int:
+            recapture_calls.append(1)
+            return 5  # 5 zones detected
+
+        director, planner, executor, _reg = _build_director(
+            recapture_fn=mock_recapture,
+        )
+
+        step_a = _make_step(step_number=1, description="Open app")
+        replan = _make_replan_step(step_number=2)
+        step_b = _make_step(step_number=1, description="Click new UI")
+
+        planner.plans = [
+            _make_plan(steps=[step_a, replan]),
+            _make_plan(steps=[step_b]),
+        ]
+        executor.results = [
+            _make_success_result(step_a),
+            _make_success_result(step_b),
+        ]
+
+        result = director.execute_task("Open app then interact")
+
+        assert result.success is True
+        assert len(recapture_calls) == 1
+
+    def test_replan_step_without_recapture_fn_does_not_crash(
+        self,
+    ) -> None:
+        """When recapture_fn is None, __replan__ still works.
+
+        The Director should log a warning but proceed with
+        replanning.
+        """
+        director, planner, executor, _reg = _build_director(
+            recapture_fn=None,
+        )
+
+        step_a = _make_step(step_number=1, description="Click X")
+        replan = _make_replan_step(step_number=2)
+        step_b = _make_step(step_number=1, description="Click Y")
+
+        planner.plans = [
+            _make_plan(steps=[step_a, replan]),
+            _make_plan(steps=[step_b]),
+        ]
+        executor.results = [
+            _make_success_result(step_a),
+            _make_success_result(step_b),
+        ]
+
+        result = director.execute_task("Replan without recapture")
+
+        assert result.success is True
+        assert result.plans_used == 2
+
+    def test_replan_step_passes_completed_steps_to_planner(
+        self,
+    ) -> None:
+        """Completed step descriptions are forwarded to the planner.
+
+        Plan 1: [step_a, step_b, __replan__].  After step_a and
+        step_b succeed, the __replan__ step triggers a new plan.
+        The planner should receive completed_steps=["Click File",
+        "Click Edit"] for the second call.
+        """
+        director, planner, executor, _reg = _build_director()
+
+        step_a = _make_step(
+            step_number=1, description="Click File"
+        )
+        step_b = _make_step(
+            step_number=2, description="Click Edit"
+        )
+        replan = _make_replan_step(step_number=3)
+        step_c = _make_step(
+            step_number=1, description="Click Save"
+        )
+
+        planner.plans = [
+            _make_plan(steps=[step_a, step_b, replan]),
+            _make_plan(steps=[step_c]),
+        ]
+        executor.results = [
+            _make_success_result(step_a),
+            _make_success_result(step_b),
+            _make_success_result(step_c),
+        ]
+
+        result = director.execute_task("File, Edit, then Save")
+
+        assert result.success is True
+        # First plan call: no completed_steps (None).
+        assert planner.completed_steps_history[0] is None
+        # Second plan call (replan): completed_steps passed.
+        assert planner.completed_steps_history[1] == [
+            "Click File",
+            "Click Edit",
+        ]
+
+    def test_replan_step_restarts_from_step_zero(self) -> None:
+        """After __replan__, execution starts from step 0 of new plan.
+
+        Plan 1: [step_a, __replan__], Plan 2: [step_b, step_c].
+        All of step_b and step_c must execute.
+        """
+        director, planner, executor, _reg = _build_director()
+
+        step_a = _make_step(step_number=1, description="Step A")
+        replan = _make_replan_step(step_number=2)
+        step_b = _make_step(step_number=1, description="Step B")
+        step_c = _make_step(step_number=2, description="Step C")
+
+        planner.plans = [
+            _make_plan(steps=[step_a, replan]),
+            _make_plan(steps=[step_b, step_c]),
+        ]
+        executor.results = [
+            _make_success_result(step_a),
+            _make_success_result(step_b),
+            _make_success_result(step_c),
+        ]
+
+        result = director.execute_task("Replan and continue")
+
+        assert result.success is True
+        # step_a + step_b + step_c = 3 completed
+        assert result.steps_completed == 3
+        # steps_total reflects the final plan's step count
+        assert result.steps_total == 2
+
+    def test_replan_step_failed_replan_aborts(self) -> None:
+        """If the adaptive replan returns failure, the task aborts.
+
+        Plan 1: [step_a, __replan__].  step_a succeeds, then the
+        replan request fails.  Task should abort.
+        """
+        director, planner, executor, _reg = _build_director()
+
+        step_a = _make_step(step_number=1, description="Step A")
+        replan = _make_replan_step(step_number=2)
+
+        planner.plans = [
+            _make_plan(steps=[step_a, replan]),
+            _make_plan(
+                success=False, error="Screen too complex"
+            ),
+        ]
+        executor.results = [
+            _make_success_result(step_a),
+        ]
+
+        result = director.execute_task("Replan that fails")
+
+        assert result.success is False
+        assert "Adaptive replan failed" in result.error
+
+    def test_replan_step_empty_replan_aborts(self) -> None:
+        """If the adaptive replan returns empty steps, task aborts."""
+        director, planner, executor, _reg = _build_director()
+
+        step_a = _make_step(step_number=1, description="Step A")
+        replan = _make_replan_step(step_number=2)
+
+        planner.plans = [
+            _make_plan(steps=[step_a, replan]),
+            _make_plan(steps=[], success=True),
+        ]
+        executor.results = [
+            _make_success_result(step_a),
+        ]
+
+        result = director.execute_task("Replan returns empty")
+
+        assert result.success is False
+        assert "Adaptive replan failed" in result.error
+
+    def test_multiple_replan_steps_in_sequence(self) -> None:
+        """Multiple __replan__ steps trigger successive replans.
+
+        Plan 1: [step_a, __replan__]
+        Plan 2: [step_b, __replan__]
+        Plan 3: [step_c]
+        All succeed, plans_used == 3.
+        """
+        director, planner, executor, _reg = _build_director()
+
+        step_a = _make_step(step_number=1, description="Step A")
+        replan_1 = _make_replan_step(step_number=2)
+        step_b = _make_step(step_number=1, description="Step B")
+        replan_2 = _make_replan_step(step_number=2)
+        step_c = _make_step(step_number=1, description="Step C")
+
+        planner.plans = [
+            _make_plan(steps=[step_a, replan_1]),
+            _make_plan(steps=[step_b, replan_2]),
+            _make_plan(steps=[step_c]),
+        ]
+        executor.results = [
+            _make_success_result(step_a),
+            _make_success_result(step_b),
+            _make_success_result(step_c),
+        ]
+
+        result = director.execute_task("Double replan")
+
+        assert result.success is True
+        assert result.plans_used == 3
+        assert result.steps_completed == 3
+
+    def test_replan_step_respects_max_replans(self) -> None:
+        """__replan__ steps are limited by _MAX_REPLANS.
+
+        If __replan__ steps cause replan_count to exceed
+        _MAX_REPLANS, the task aborts.
+        """
+        director, planner, executor, _reg = _build_director()
+
+        # Build _MAX_REPLANS + 2 plans, each containing a step
+        # followed by a __replan__.  The last plan triggers the
+        # overflow.
+        for i in range(_MAX_REPLANS + 2):
+            step = _make_step(
+                step_number=1, description=f"Step {i}"
+            )
+            replan = _make_replan_step(step_number=2)
+            planner.plans.append(
+                _make_plan(steps=[step, replan])
+            )
+            executor.results.append(_make_success_result(step))
+
+        result = director.execute_task("Replan overflow")
+
+        assert result.success is False
+        assert "replan" in result.error.lower()
+
+    def test_replan_step_api_calls_include_recapture(self) -> None:
+        """api_calls_used includes the recapture call.
+
+        When recapture_fn is provided, each __replan__ step adds
+        1 API call for the recapture plus the plan's api_calls_used.
+        """
+        def mock_recapture() -> int:
+            return 3
+
+        director, planner, executor, _reg = _build_director(
+            recapture_fn=mock_recapture,
+        )
+
+        step_a = _make_step(step_number=1, description="Step A")
+        replan = _make_replan_step(step_number=2)
+        step_b = _make_step(step_number=1, description="Step B")
+
+        planner.plans = [
+            _make_plan(steps=[step_a, replan], api_calls_used=1),
+            _make_plan(steps=[step_b], api_calls_used=1),
+        ]
+        executor.results = [
+            _make_success_result(step_a),
+            _make_success_result(step_b),
+        ]
+
+        result = director.execute_task("Check API calls")
+
+        # 1 (plan 1) + 1 (recapture) + 1 (plan 2) = 3
+        assert result.api_calls_used == 3
+
+    def test_replan_step_at_start_of_plan(self) -> None:
+        """A __replan__ step as the first step still works.
+
+        Plan 1: [__replan__].  No steps completed, replan triggers.
+        Plan 2: [step_a].  step_a succeeds.
+        """
+        director, planner, executor, _reg = _build_director()
+
+        replan = _make_replan_step(step_number=1)
+        step_a = _make_step(step_number=1, description="Step A")
+
+        planner.plans = [
+            _make_plan(steps=[replan]),
+            _make_plan(steps=[step_a]),
+        ]
+        executor.results = [
+            _make_success_result(step_a),
+        ]
+
+        result = director.execute_task("Immediate replan")
+
+        assert result.success is True
+        assert result.plans_used == 2
+        # completed_steps should be empty for the replan call
+        assert planner.completed_steps_history[1] == []
+
+
+# ===================================================================
+# 8. Completed Steps Tracking
+# ===================================================================
+
+
+class TestCompletedStepsTracking:
+    """Tests for completed_descriptions tracking across replans.
+
+    The Director builds a ``completed_descriptions`` list as steps
+    succeed.  This list is passed to the planner on replanning so the
+    API knows what work has already been done.
+    """
+
+    def test_completed_steps_none_for_initial_plan(self) -> None:
+        """The initial plan receives completed_steps=None."""
+        director, planner, executor, _reg = _build_director()
+
+        step = _make_step(step_number=1, description="Click OK")
+        planner.plans = [_make_plan(steps=[step])]
+        executor.results = [_make_success_result(step)]
+
+        director.execute_task("Click OK")
+
+        assert planner.completed_steps_history[0] is None
+
+    def test_error_replan_passes_completed_steps(self) -> None:
+        """Error-based replans also pass completed_steps.
+
+        Plan 1: [step_a, step_b].  step_a succeeds, step_b fails
+        with zone_not_found -> replan.  The replan call should
+        receive completed_steps=["Click File"].
+        """
+        director, planner, executor, _reg = _build_director()
+
+        step_a = _make_step(
+            step_number=1, description="Click File"
+        )
+        step_b = _make_step(
+            step_number=2,
+            zone_id="btn_missing",
+            description="Click Missing",
+        )
+        step_c = _make_step(
+            step_number=1, description="Click Found"
+        )
+
+        planner.plans = [
+            _make_plan(steps=[step_a, step_b]),
+            _make_plan(steps=[step_c]),
+        ]
+        executor.results = [
+            _make_success_result(step_a),
+            _make_failure_result(
+                step_b, error_type="zone_not_found"
+            ),
+            _make_success_result(step_c),
+        ]
+
+        result = director.execute_task("Error replan test")
+
+        assert result.success is True
+        # Second plan call should have completed_steps from step_a.
+        assert planner.completed_steps_history[1] == ["Click File"]
+
+    def test_completed_steps_accumulate_across_replans(
+        self,
+    ) -> None:
+        """Completed steps accumulate across multiple replans.
+
+        Plan 1: [step_a, __replan__]
+        Plan 2: [step_b, __replan__]
+        Plan 3: [step_c]
+
+        Replan 1 receives ["Step A"], replan 2 receives
+        ["Step A", "Step B"].
+        """
+        director, planner, executor, _reg = _build_director()
+
+        step_a = _make_step(step_number=1, description="Step A")
+        replan_1 = _make_replan_step(step_number=2)
+        step_b = _make_step(step_number=1, description="Step B")
+        replan_2 = _make_replan_step(step_number=2)
+        step_c = _make_step(step_number=1, description="Step C")
+
+        planner.plans = [
+            _make_plan(steps=[step_a, replan_1]),
+            _make_plan(steps=[step_b, replan_2]),
+            _make_plan(steps=[step_c]),
+        ]
+        executor.results = [
+            _make_success_result(step_a),
+            _make_success_result(step_b),
+            _make_success_result(step_c),
+        ]
+
+        result = director.execute_task("Accumulating steps")
+
+        assert result.success is True
+        # Call 0 (initial plan): None
+        assert planner.completed_steps_history[0] is None
+        # Call 1 (first replan): ["Step A"]
+        assert planner.completed_steps_history[1] == ["Step A"]
+        # Call 2 (second replan): ["Step A", "Step B"]
+        assert planner.completed_steps_history[2] == [
+            "Step A",
+            "Step B",
+        ]
+
+    def test_no_completed_steps_when_first_step_fails(
+        self,
+    ) -> None:
+        """When the very first step fails, completed_steps is empty.
+
+        Plan 1: [step_a].  step_a fails with zone_not_found.
+        The replan call should receive completed_steps=[].
+        """
+        director, planner, executor, _reg = _build_director()
+
+        step_a = _make_step(
+            step_number=1, description="Click Missing"
+        )
+        step_b = _make_step(
+            step_number=1, description="Click Found"
+        )
+
+        planner.plans = [
+            _make_plan(steps=[step_a]),
+            _make_plan(steps=[step_b]),
+        ]
+        executor.results = [
+            _make_failure_result(
+                step_a, error_type="zone_not_found"
+            ),
+            _make_success_result(step_b),
+        ]
+
+        result = director.execute_task("First step fails")
+
+        assert result.success is True
+        # Initial plan: None.
+        assert planner.completed_steps_history[0] is None
+        # Replan: no steps completed yet, so empty list.
+        assert planner.completed_steps_history[1] == []

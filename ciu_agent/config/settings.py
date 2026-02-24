@@ -89,7 +89,7 @@ class Settings:
     step_delay_seconds: float = 2.0
 
     # -- API settings ---------------------------------------------------------
-    api_timeout_vision_seconds: float = 30.0
+    api_timeout_vision_seconds: float = 60.0
     api_timeout_text_seconds: float = 30.0
     api_max_retries: int = 3
     api_backoff_base_seconds: float = 2.0

@@ -256,6 +256,99 @@ class TestBuildPrompt:
         assert content[0]["type"] == "text"
         assert isinstance(content[0]["text"], str)
 
+    def test_zones_detected_format(self) -> None:
+        """User message shows 'Zones detected: N (M clickable)' format."""
+        zones = [
+            _make_zone(zone_id="btn_1", zone_type=ZoneType.BUTTON),
+            _make_zone(
+                zone_id="static_1",
+                label="Title",
+                zone_type=ZoneType.STATIC,
+            ),
+            _make_zone(
+                zone_id="chk_1",
+                label="Agree",
+                zone_type=ZoneType.CHECKBOX,
+            ),
+        ]
+        payload = self.planner.build_prompt("Do things", zones)
+        user_text = payload["messages"][0]["content"][0]["text"]
+
+        assert "Zones detected: 3" in user_text
+        # button and checkbox are clickable; static is not
+        assert "(2 clickable)" in user_text
+
+    def test_available_zones_heading(self) -> None:
+        """User message uses the new 'AVAILABLE ZONES' heading."""
+        zone = _make_zone()
+        payload = self.planner.build_prompt("Test", [zone])
+        user_text = payload["messages"][0]["content"][0]["text"]
+
+        assert "AVAILABLE ZONES (use these zone_ids for visual mode):" in user_text
+
+    def test_reminder_text_present(self) -> None:
+        """User message includes the REMINDER about zone_id usage."""
+        payload = self.planner.build_prompt(
+            "Test", [_make_zone()]
+        )
+        user_text = payload["messages"][0]["content"][0]["text"]
+
+        assert "REMINDER: You MUST use zone_id" in user_text
+
+    def test_completed_steps_included_in_prompt(self) -> None:
+        """build_prompt with completed_steps shows them in prompt."""
+        completed = [
+            "Clicked the Start button",
+            "Typed 'notepad' in search box",
+        ]
+        payload = self.planner.build_prompt(
+            "Open notepad", [], completed_steps=completed
+        )
+        user_text = payload["messages"][0]["content"][0]["text"]
+
+        assert "ALREADY COMPLETED (DO NOT REPEAT)" in user_text
+        assert "Clicked the Start button" in user_text
+        assert "Typed 'notepad' in search box" in user_text
+        assert "Plan ONLY the remaining steps" in user_text
+
+    def test_completed_steps_numbered(self) -> None:
+        """Completed steps are numbered sequentially in the prompt."""
+        completed = ["Step A", "Step B", "Step C"]
+        payload = self.planner.build_prompt(
+            "Task", [], completed_steps=completed
+        )
+        user_text = payload["messages"][0]["content"][0]["text"]
+
+        assert "1. Step A" in user_text
+        assert "2. Step B" in user_text
+        assert "3. Step C" in user_text
+
+    def test_no_completed_steps_omits_section(self) -> None:
+        """build_prompt without completed_steps has no progress text."""
+        payload = self.planner.build_prompt("Open file", [])
+        user_text = payload["messages"][0]["content"][0]["text"]
+
+        assert "ALREADY COMPLETED (DO NOT REPEAT)" not in user_text
+        assert "Plan ONLY the remaining steps" not in user_text
+
+    def test_completed_steps_none_omits_section(self) -> None:
+        """Explicitly passing None omits the progress section."""
+        payload = self.planner.build_prompt(
+            "Open file", [], completed_steps=None
+        )
+        user_text = payload["messages"][0]["content"][0]["text"]
+
+        assert "ALREADY COMPLETED (DO NOT REPEAT)" not in user_text
+
+    def test_completed_steps_empty_list_omits_section(self) -> None:
+        """An empty completed_steps list omits the progress section."""
+        payload = self.planner.build_prompt(
+            "Open file", [], completed_steps=[]
+        )
+        user_text = payload["messages"][0]["content"][0]["text"]
+
+        assert "ALREADY COMPLETED (DO NOT REPEAT)" not in user_text
+
 
 class TestParseResponse:
     """Tests for TaskPlanner.parse_response."""
@@ -532,6 +625,55 @@ class TestPlan:
 
         assert result.success is True
         assert result.steps == []
+
+    def test_plan_passes_completed_steps_to_build_prompt(self) -> None:
+        """plan() forwards completed_steps to build_prompt()."""
+        steps_json = json.dumps([_make_step_dict()])
+        body = _make_api_response_body(steps_json)
+        mock_resp = _mock_httpx_response(200, body)
+
+        completed = ["Opened Start menu", "Typed search query"]
+        planner = TaskPlanner(_make_settings(), api_key="sk-test")
+
+        with _patch_client(mock_resp) as mock_client_cls:
+            result = planner.plan(
+                "Launch app", [_make_zone()],
+                completed_steps=completed,
+            )
+
+        assert result.success is True
+
+        # Verify the prompt sent to the API includes the completed steps.
+        call_kwargs = mock_client_cls.return_value.post.call_args
+        sent_payload = call_kwargs.kwargs.get(
+            "json"
+        ) or call_kwargs[1].get("json", {})
+        user_text = sent_payload["messages"][0]["content"][0]["text"]
+
+        assert "ALREADY COMPLETED (DO NOT REPEAT)" in user_text
+        assert "Opened Start menu" in user_text
+        assert "Typed search query" in user_text
+
+    def test_plan_without_completed_steps_omits_progress(self) -> None:
+        """plan() without completed_steps omits progress text."""
+        steps_json = json.dumps([_make_step_dict()])
+        body = _make_api_response_body(steps_json)
+        mock_resp = _mock_httpx_response(200, body)
+
+        planner = TaskPlanner(_make_settings(), api_key="sk-test")
+
+        with _patch_client(mock_resp) as mock_client_cls:
+            result = planner.plan("Click OK", [_make_zone()])
+
+        assert result.success is True
+
+        call_kwargs = mock_client_cls.return_value.post.call_args
+        sent_payload = call_kwargs.kwargs.get(
+            "json"
+        ) or call_kwargs[1].get("json", {})
+        user_text = sent_payload["messages"][0]["content"][0]["text"]
+
+        assert "ALREADY COMPLETED (DO NOT REPEAT)" not in user_text
 
 
 class TestSummarizeZones:

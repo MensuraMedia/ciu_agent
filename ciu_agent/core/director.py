@@ -47,10 +47,11 @@ from ciu_agent.models.task import TaskPlan, TaskStep
 logger = logging.getLogger(__name__)
 
 # Maximum number of API calls per task to prevent runaway costs.
-_MAX_API_CALLS: int = 20
+_MAX_API_CALLS: int = 30
 
 # Maximum number of re-plan attempts before aborting.
-_MAX_REPLANS: int = 3
+# This covers both adaptive replans (__replan__ steps) and error replans.
+_MAX_REPLANS: int = 5
 
 # Maximum retries for a single step before escalating.
 _MAX_STEP_RETRIES: int = 3
@@ -139,9 +140,11 @@ class Director:
 
         1. Decompose the task into a plan via the Claude API.
         2. Execute each step in order through the BrushController.
-        3. On step failure, classify the error and attempt recovery
+        3. On ``__replan__`` steps, re-capture the screen and create a
+           new plan for remaining work (adaptive replanning).
+        4. On step failure, classify the error and attempt recovery
            (retry, replan, reanalyze) up to configured limits.
-        4. Return a ``TaskResult`` summarising the outcome.
+        5. Return a ``TaskResult`` summarising the outcome.
 
         Args:
             task: A natural-language description of the task to
@@ -153,6 +156,7 @@ class Director:
         start_time = time.perf_counter()
         self._api_calls_used = 0
         all_step_results: list[StepResult] = []
+        completed_descriptions: list[str] = []
         plans_used = 0
 
         # ---- Phase 1: Plan the task ----
@@ -206,11 +210,69 @@ class Director:
                 )
 
             step = current_plan.steps[step_index]
+
+            # ---- Handle __replan__ step (adaptive replanning) ----
+            if step.zone_id == "__replan__":
+                logger.info(
+                    "Step %d: __replan__ — re-capturing screen and "
+                    "creating new plan for remaining work",
+                    step.step_number,
+                )
+                replan_count += 1
+                if replan_count > _MAX_REPLANS:
+                    elapsed = (
+                        time.perf_counter() - start_time
+                    ) * 1000.0
+                    return TaskResult(
+                        task_description=task,
+                        success=False,
+                        steps_completed=steps_completed,
+                        steps_total=len(current_plan.steps),
+                        step_results=all_step_results,
+                        plans_used=plans_used,
+                        api_calls_used=self._api_calls_used,
+                        error="Maximum replan attempts exceeded",
+                        duration_ms=elapsed,
+                    )
+
+                # Re-capture screen to detect new zones.
+                self._do_recapture()
+
+                # Create a new plan with context of completed steps.
+                new_plan = self._create_plan(
+                    task,
+                    completed_steps=completed_descriptions,
+                )
+                plans_used += 1
+
+                if not new_plan.success or not new_plan.steps:
+                    elapsed = (
+                        time.perf_counter() - start_time
+                    ) * 1000.0
+                    return TaskResult(
+                        task_description=task,
+                        success=False,
+                        steps_completed=steps_completed,
+                        steps_total=len(current_plan.steps),
+                        step_results=all_step_results,
+                        plans_used=plans_used,
+                        api_calls_used=self._api_calls_used,
+                        error="Adaptive replan failed: "
+                        + new_plan.error,
+                        duration_ms=elapsed,
+                    )
+
+                current_plan = new_plan
+                step_index = 0
+                continue
+
+            # ---- Execute the step ----
             result = self._execute_step_with_retries(step)
             all_step_results.append(result)
 
             if result.success:
                 steps_completed += 1
+                completed_descriptions.append(step.description)
                 step_index += 1
                 if step_index < len(current_plan.steps):
                     # Allow the screen to update before the next step.
@@ -262,7 +324,10 @@ class Director:
                         duration_ms=elapsed,
                     )
 
-                new_plan = self._create_plan(task)
+                new_plan = self._create_plan(
+                    task,
+                    completed_steps=completed_descriptions,
+                )
                 plans_used += 1
 
                 if not new_plan.success or not new_plan.steps:
@@ -335,26 +400,77 @@ class Director:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _create_plan(self, task: str) -> TaskPlan:
+    def _create_plan(
+        self,
+        task: str,
+        completed_steps: list[str] | None = None,
+    ) -> TaskPlan:
         """Create a task plan via the planner.
 
         Increments the API call counter.
 
         Args:
             task: Natural-language task description.
+            completed_steps: Optional list of already-completed step
+                descriptions for adaptive replanning context.
 
         Returns:
             The ``TaskPlan`` from the planner.
         """
         zones = self._registry.get_all()
-        plan = self._planner.plan(task, zones)
+        plan = self._planner.plan(task, zones, completed_steps)
         self._api_calls_used += plan.api_calls_used
-        logger.info(
-            "Plan created: %d steps, success=%s",
-            len(plan.steps),
-            plan.success,
-        )
+
+        # Log zone usage in the plan for debugging.
+        if plan.steps:
+            visual_count = sum(
+                1 for s in plan.steps
+                if s.zone_id not in ("__global__", "__replan__")
+            )
+            logger.info(
+                "Plan created: %d steps (%d visual, %d global, "
+                "%d replan), success=%s",
+                len(plan.steps),
+                visual_count,
+                sum(
+                    1 for s in plan.steps
+                    if s.zone_id == "__global__"
+                ),
+                sum(
+                    1 for s in plan.steps
+                    if s.zone_id == "__replan__"
+                ),
+                plan.success,
+            )
+        else:
+            logger.info(
+                "Plan created: 0 steps, success=%s",
+                plan.success,
+            )
         return plan
+
+    def _do_recapture(self) -> None:
+        """Force a screen re-capture and zone re-detection.
+
+        Calls the ``recapture_fn`` callback if available.  Used by the
+        adaptive replanning logic when a ``__replan__`` step is
+        encountered.
+        """
+        if self._recapture_fn is None:
+            logger.warning(
+                "Recapture requested but no recapture_fn available"
+            )
+            return
+
+        logger.info("Performing screen re-capture for replanning")
+        try:
+            zone_count = self._recapture_fn()
+            self._api_calls_used += 1
+            logger.info(
+                "Re-capture complete: %d zones detected", zone_count,
+            )
+        except Exception as exc:
+            logger.error("Re-capture failed: %s", exc)
 
     def _execute_step_with_retries(
         self,
